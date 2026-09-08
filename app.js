@@ -11,7 +11,7 @@ let state = { tab: "概述", cat: null, planIdx: 0, sub: "区域汇总", empFilt
   pRegion: "全部", pGroup: "全部", pStore: "全部", dStatus: "全部", dGroups: {}, dRegions: {} };
 const PLAN_EXCLUDE = ["测试", "XX", "xx", "课前准备", "174期", "煲饭"];
 const SURVEY_RE = /问卷|调查/; // 调查问卷类计划 → 归入 评价管理·课程满意度调研
-const TYPE_NAME = { 3: "学习", 4: "考试", 5: "作业", 7: "表单", 8: "实操" };
+const TYPE_NAME = { 3: "必修课", 4: "考试", 5: "作业", 7: "表单", 8: "实操" };
 
 const STATUS_MAP = { 0: ["未开始", "b-gray"], 1: ["进行中", "b-orange"], 2: ["已完成", "b-green"] };
 const CORE_CATS = ["新加盟商培训", "线上线下培训", "员工培训/晋升"];
@@ -264,8 +264,8 @@ function openAgg(label, nameEnc, keep) {
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';openAgg('${label}','${nameEnc}',true)">${f}</button>`).join("")}
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：学习/考试/实操为整个计划已完成/应完成；考试多个分数以 / 隔开；总进度=已完成/应完成。</div>
-    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>学习</th><th>考试分数</th><th>实操</th><th>总进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操为整个计划已完成/应完成；考试多个分数以 / 隔开；总进度=已完成/应完成。</div>
+    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>必修课</th><th>考试分数</th><th>实操</th><th>总进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
   document.getElementById("mask").classList.add("show");
 }
 
@@ -398,7 +398,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：学习/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。</div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
@@ -412,7 +412,7 @@ function renderStageModal() {
       </select>
       <span style="color:var(--t2);margin-left:8px">共 ${emps.length} 人</span>
     </div>
-    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>出勤</th><th>学习</th><th>考试分数</th><th>实操</th><th>阶段进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
+    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>出勤</th><th>必修课</th><th>考试分数</th><th>实操</th><th>阶段进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
 }
 
 /* ---------- 门店明细弹窗 ---------- */

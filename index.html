@@ -53,6 +53,12 @@ tr.clickable:hover{background:#f6f9ff}
 .modal .mhead h3{font-size:16px}
 .modal .mhead .x{margin-left:auto;cursor:pointer;font-size:20px;color:var(--t2)}
 .modal .mbody{padding:16px 20px;overflow:auto}
+/* 全局隐藏滚动条（仍可滚动），弹窗表格允许换行不溢出 */
+*{scrollbar-width:none!important;-ms-overflow-style:none!important}
+*::-webkit-scrollbar{width:0!important;height:0!important;display:none!important}
+.modal .mbody td{white-space:normal;word-break:break-all;vertical-align:middle}
+.modal .mbody td:first-child,.modal .mbody td:nth-child(2){white-space:nowrap}
+.modal .mbody table{width:100%;table-layout:auto}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .filters button{border:1px solid var(--line);background:#fff;padding:5px 13px;border-radius:16px;font-size:12px;color:var(--t2);cursor:pointer}
 .filters button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
@@ -103,6 +109,6 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 </div>
 
 <script src="qrcode.min.js?v=14"></script>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>
