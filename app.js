@@ -598,8 +598,8 @@ function renderLectureEval() {
   syncStores();
 }
 
-/* 目录二：课程满意度调研（慧运营问卷 + H5满意度提交） */
-const SCORE_NUM = { "很满意": 5, "满意": 4, "一般": 3, "不满意": 2 };
+/* 目录二：课程满意度调研（慧运营问卷 + 自建课题调研 + H5满意度提交） */
+const SCORE_NUM = { "非常满意（5分）": 5, "满意（4分）": 4, "良好（3分）": 3, "一般（2分）": 2, "不满意（1分）": 1, "很满意": 5, "满意": 4, "一般": 3, "不满意": 2 };
 function lessonNum(s) { // 提取"第X节/讲"的序号（支持中文数字），用于问卷计划与H5提交课程匹配
   const CN = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10 };
   const m = (s || "").match(/第([一二三四五六七八九十\d]+)[节讲]/);
@@ -614,10 +614,47 @@ function surveySubs(planName) { // 与该问卷同场次课程的 H5 满意度�
   const n = lessonNum(planName);
   return (DATA.courseSurveys || []).filter(v => n && lessonNum(v.course) === n);
 }
-function surveyAvgScore(planName) {
-  const subs = surveySubs(planName).filter(v => SCORE_NUM[v.score]);
-  if (!subs.length) return null;
-  return subs.reduce((a, v) => a + SCORE_NUM[v.score], 0) / subs.length;
+function avgScore(subs) { // 满意度平均分（5分制，按"是否满意"选项）
+  const s = subs.filter(v => SCORE_NUM[v.score]);
+  if (!s.length) return null;
+  return s.reduce((a, v) => a + SCORE_NUM[v.score], 0) / s.length;
+}
+function surveyAvgScore(planName) { return avgScore(surveySubs(planName)); }
+/* 自建课题调研（存 localStorage，仅看板端管理） */
+function customSurveysOf() { try { return JSON.parse(localStorage.getItem("customSurveys") || "[]"); } catch (e) { return []; } }
+function saveCustomSurveys(list) { localStorage.setItem("customSurveys", JSON.stringify(list)); }
+function addCustomSurvey() {
+  const name = (document.getElementById("csName").value || "").trim();
+  const date = document.getElementById("csDate").value || new Date().toISOString().slice(0, 10);
+  if (!name) { document.getElementById("csTip").textContent = "请先填写调研名称"; return; }
+  const list = customSurveysOf();
+  if (list.some(c => c.name === name)) { document.getElementById("csTip").textContent = "该调研已存在"; return; }
+  list.push({ name, date });
+  saveCustomSurveys(list);
+  document.getElementById("csTip").textContent = "";
+  render();
+}
+function delCustomSurvey(i) {
+  const list = customSurveysOf();
+  if (!confirm("删除自建调研「" + list[i].name + "」？（不影响已提交的问卷数据）")) return;
+  list.splice(i, 1);
+  saveCustomSurveys(list);
+  render();
+}
+function subsForTopic(name) { // 自建调研的提交：先按课程名精确匹配，再按场次序号兜底
+  const exact = (DATA.courseSurveys || []).filter(v => v.course === name);
+  if (exact.length) return exact;
+  const n = lessonNum(name);
+  return (DATA.courseSurveys || []).filter(v => n && lessonNum(v.course) === n);
+}
+function adviceTable(subs) { // 建议明细：姓名/门店/区域/课程节奏/课程内容/讲解清晰度/是否满意/建议/课程建议
+  const rows = subs.map(v => `<tr>
+    <td>${esc(v.by) || "-"}</td><td>${esc(v.store)}</td><td>${esc(v.region) || "-"}</td>
+    <td>${esc(v.rhythm) || "-"}</td><td>${esc(v.content) || "-"}</td><td>${esc(v.clarity) || "-"}</td>
+    <td><span class="badge ${(v.score || "").startsWith("非常满意") || v.score === "很满意" ? "b-green" : (v.score || "").startsWith("不满意") ? "b-red" : "b-blue"}">${esc(v.score) || "-"}</span></td>
+    <td style="white-space:normal">${esc(v.comment) || "-"}</td>
+    <td style="white-space:normal">${esc(v.next) || "-"}</td></tr>`).join("");
+  return `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>课程节奏</th><th>课程内容</th><th>讲解清晰度</th><th>是否满意</th><th>建议</th><th>课程建议</th></tr>${rows}</table>`;
 }
 function renderSurvey() {
   const surveys = surveysInRange();
@@ -628,31 +665,39 @@ function renderSurvey() {
     const subs = surveySubs(p.planName);
     return `<tr class="clickable" onclick="openSurvey(${i})">
       <td>${esc(p.planName)}</td><td>${p.startDate || "-"}</td><td>${done}</td>
-      <td>${avg != null ? `<span class="badge b-green">${avg.toFixed(1)} 分</span><span style="color:var(--t2);font-size:12px">（${subs.length}条）</span>` : `<span style="color:var(--t2)">—</span>`}</td>
-      <td onclick="event.stopPropagation()">${subs.length ? `<button class="btn" style="padding:5px 12px;font-size:12px" onclick="openAdvice(${i})">查看建议${subs.filter(v => (v.comment || "").trim()).length ? `（${subs.filter(v => (v.comment || "").trim()).length}）` : ""}</button>` : `<span style="color:var(--t2);font-size:12px">暂无</span>`}</td></tr>`;
-  }).join("") || `<tr><td colspan="5" class="empty">暂无调查问卷计划</td></tr>`;
-
-  const allSub = DATA.courseSurveys || [];
-  const subs = allSub.filter(v => dateInrange(new Date(v.time).toISOString().slice(0, 10)));
-  const subRows = subs.map(v => `<tr>
-      <td>${esc(v.store)}</td><td>${esc(v.course || "-")}</td>
-      <td><span class="badge ${v.score === "很满意" ? "b-green" : v.score === "不满意" ? "b-red" : "b-blue"}">${esc(v.score || "-")}</span></td>
-      <td style="white-space:normal">${esc(v.comment || "")}</td>
-      <td style="color:var(--t2);font-size:12px">${new Date(v.time).toLocaleString("zh-CN")} · ${esc(v.by) || "-"}</td></tr>`).join("")
-    || `<tr><td colspan="5" class="empty">暂无门店提交满意度</td></tr>`;
+      <td>${avg != null ? `<span class="badge b-green">${avg.toFixed(1)} 分</span><span style="color:var(--t2);font-size:12px">（${subs.length}份）</span>` : `<span style="color:var(--t2)">—</span>`}</td>
+      <td onclick="event.stopPropagation()">${subs.length ? `<button class="btn" style="padding:5px 12px;font-size:12px" onclick="openAdvice(${i})">查看建议${subs.filter(v => (v.comment || "").trim() || (v.next || "").trim()).length ? `（${subs.filter(v => (v.comment || "").trim() || (v.next || "").trim()).length}）` : ""}</button>` : `<span style="color:var(--t2);font-size:12px">暂无</span>`}</td></tr>`;
+  }).join("");
+  const customs = customSurveysOf().filter(c => dateInrange(c.date));
+  const customRows = customs.map((c, i) => {
+    const subs = subsForTopic(c.name).filter(v => dateInrange(new Date(v.time).toISOString().slice(0, 10)));
+    const avg = avgScore(subs);
+    return `<tr>
+      <td><b>${esc(c.name)}</b><span class="badge b-blue" style="margin-left:6px">自建</span></td><td>${c.date || "-"}</td><td>${subs.length}</td>
+      <td>${avg != null ? `<span class="badge b-green">${avg.toFixed(1)} 分</span><span style="color:var(--t2);font-size:12px">（${subs.length}份）</span>` : `<span style="color:var(--t2)">—</span>`}</td>
+      <td>${subs.length ? `<button class="btn" style="padding:5px 12px;font-size:12px" onclick="openAdviceC(${i})">查看建议${subs.filter(v => (v.comment || "").trim() || (v.next || "").trim()).length ? `（${subs.filter(v => (v.comment || "").trim() || (v.next || "").trim()).length}）` : ""}</button>` : `<span style="color:var(--t2);font-size:12px">暂无</span>`}
+        <button class="btn" style="padding:5px 10px;font-size:12px;background:var(--line)" onclick="delCustomSurvey(${i})">删</button></td></tr>`;
+  }).join("");
 
   const onlinePlans = plansOf("线上线下培训");
   document.getElementById("evalBody").innerHTML = `
     <div class="sec">
-      <h3>课程满意度 · 慧运营调查问卷</h3>
-      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">来自「线上线下培训」的调查问卷类计划（已从培训统计中移入本板块），点击行查看答题明细；评分取自该场次课程 H5 满意度提交</div>
-      <table><tr><th>问卷计划</th><th>日期</th><th>已完成</th><th>评分</th><th>查看建议</th></tr>${survRows}</table>
+      <h3>课程满意度 · 调研列表</h3>
+      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">含慧运营调查问卷（已从培训统计中移入本板块，点击行查看答题明细）与自建课题调研；评分取「是否满意」平均分（非常满意5分～不满意1分），括号内为收到份数</div>
+      <table><tr><th>问卷名称</th><th>日期</th><th>已提交</th><th>评分</th><th>查看建议</th></tr>${survRows}${customRows}</table>
     </div>
-    ${linkGenHtml("survey", onlinePlans)}
     <div class="sec">
-      <h3>门店提交的满意度（H5）</h3>
-      <table><tr><th>门店</th><th>课程</th><th>满意度</th><th>意见与建议</th><th>提交时间</th></tr>${subRows}</table>
-    </div>`;
+      <h3>新增课题调研（自建）</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
+        <input id="csName" placeholder="调研名称（建议含课程/期数，如：第X节直播课满意度调研）" style="flex:2;min-width:240px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff" />
+        <input id="csDate" type="date" style="padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff" />
+        <button class="btn" onclick="addCustomSurvey()">添加调研</button>
+      </div>
+      <div id="csTip" style="font-size:12px;color:#D9363E"></div>
+      <div style="font-size:12px;color:var(--t2)">添加后自动汇总该名称课程（或同场次序号课程）的 H5 满意度提交，生成链接可到下方「满意度调查链接生成」处生成后发给伙伴填写</div>
+    </div>
+    ${linkGenHtml("survey", onlinePlans)}`;
+  syncStores();
 }
 function surveysInRange() { return surveysOf().filter(p => dateInrange(p.startDate)); }
 let surveyFilter = "全部";
@@ -679,13 +724,17 @@ function openSurvey(idx, keepFilter) {
 }
 function openAdvice(idx) {
   const p = surveysInRange()[idx];
-  const subs = surveySubs(p.planName).filter(v => (v.comment || "").trim());
-  document.getElementById("mTitle").textContent = p.planName + " · 门店建议";
-  document.getElementById("mBody").innerHTML = subs.length ? subs.map(v => `
-    <div class="eval-card">
-      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">${esc(v.store)} · ${esc(v.score || "-")} · ${new Date(v.time).toLocaleString("zh-CN")} · ${esc(v.by) || "-"}</div>
-      <div style="font-size:14px;line-height:1.7;white-space:normal">${esc(v.comment)}</div>
-    </div>`).join("") : `<div class="empty">该问卷对应课程暂无文字建议</div>`;
+  const subs = surveySubs(p.planName);
+  document.getElementById("mTitle").textContent = p.planName + " · 建议明细（" + subs.length + "份）";
+  document.getElementById("mBody").innerHTML = subs.length ? adviceTable(subs) : `<div class="empty">该问卷对应课程暂无提交</div>`;
+  document.getElementById("mask").classList.add("show");
+}
+function openAdviceC(idx) {
+  const c = customSurveysOf().filter(x => dateInrange(x.date))[idx];
+  if (!c) return;
+  const subs = subsForTopic(c.name).filter(v => dateInrange(new Date(v.time).toISOString().slice(0, 10)));
+  document.getElementById("mTitle").textContent = c.name + " · 建议明细（" + subs.length + "份）";
+  document.getElementById("mBody").innerHTML = subs.length ? adviceTable(subs) : `<div class="empty">该调研暂无提交</div>`;
   document.getElementById("mask").classList.add("show");
 }
 

@@ -48,7 +48,7 @@
     <div class="course-chip" id="courseChip" style="display:none"></div>
     <div id="storeBox"></div>
     <div class="field">
-      <div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>授课老师</div>
+      <div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t" id="byLabel"><i></i>授课老师</div>
       <div class="d">请填写授课老师姓名</div></div>
       <input id="by" placeholder="请输入姓名" />
     </div>
@@ -75,15 +75,37 @@
       </div>
     </div>
     <div id="satBody" style="display:none">
+      <div class="field"><div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>所在区域</div>
+      <div class="d">请填写你所在的区域（如：中山一区）</div></div><input id="region" placeholder="请输入区域" /></div>
       <div class="mod">
-        <div class="t"><i></i>整体满意度</div>
-        <div class="d">请对本次课程整体做出评价</div>
+        <div class="t"><i></i>课程节奏</div>
+        <div class="d">本次课程的节奏安排是否合适</div>
+        <div class="opts" id="rhythmOpts"></div>
+      </div>
+      <div class="mod">
+        <div class="t"><i></i>课程内容</div>
+        <div class="d">本次课程的内容对工作是否有帮助</div>
+        <div class="opts" id="contentOpts"></div>
+      </div>
+      <div class="mod">
+        <div class="t"><i></i>讲解清晰度</div>
+        <div class="d">讲师的讲解是否清晰易懂</div>
+        <div class="opts" id="clarityOpts"></div>
+      </div>
+      <div class="mod">
+        <div class="t"><i></i>您对本次课程是否满意</div>
+        <div class="d">非常满意（5分）· 满意（4分）· 良好（3分）· 一般（2分）· 不满意（1分）</div>
         <div class="opts" id="scoreOpts"></div>
       </div>
       <div class="mod">
-        <div class="t"><i></i>意见与建议</div>
+        <div class="t"><i></i>建议</div>
         <div class="d">课程内容、讲师授课、组织安排等任何想法都可以写</div>
-        <textarea id="comment" placeholder="请输入意见与建议（不少于10个字）"></textarea>
+        <textarea id="comment" placeholder="请输入您的建议（选填）"></textarea>
+      </div>
+      <div class="mod">
+        <div class="t"><i></i>课程建议</div>
+        <div class="d">后续推出什么方面的课程呢</div>
+        <textarea id="next" placeholder="请输入您希望学习的课程方向（选填）"></textarea>
       </div>
     </div>
     <button id="submitBtn" onclick="submitEval()">提 交 评 价</button>
@@ -115,6 +137,8 @@ if (isSat) {
 }
 document.getElementById("storeName").textContent = (course ? "课程：" + course : "欢迎填写");
 if (isSat) {
+  document.getElementById("byLabel").innerHTML = '<i></i>姓名';
+  document.getElementById("by").placeholder = "请输入您的姓名";
   document.getElementById("lectureBody").style.display = "none";
   document.getElementById("satBody").style.display = "block";
 } else {
@@ -133,9 +157,18 @@ function togglePart(btn, id) {
   else { pickedParts.add(id); btn.classList.add("on"); document.getElementById("mod" + id.charAt(0).toUpperCase() + id.slice(1)).style.display = "block"; }
 }
 let score = "";
-const SCORES = ["很满意", "满意", "一般", "不满意"];
+const SCORES = ["非常满意（5分）", "满意（4分）", "良好（3分）", "一般（2分）", "不满意（1分）"];
+const DIM_OPTS = ["很好", "较好", "一般", "较差"];
 if (isSat) {
   document.getElementById("scoreOpts").innerHTML = SCORES.map(s => `<button onclick="pickScore(this,'${s}')">${s}</button>`).join("");
+  [["rhythmOpts","rhythm"],["contentOpts","content"],["clarityOpts","clarity"]].forEach(([oid]) => {
+    document.getElementById(oid).innerHTML = DIM_OPTS.map(s => `<button onclick="pickDim(this,'${oid}','${s}')">${s}</button>`).join("");
+  });
+}
+const dims = {};
+function pickDim(btn, oid, v) {
+  dims[oid.replace("Opts","")] = v;
+  document.querySelectorAll("#" + oid + " button").forEach(b => b.classList.toggle("on", b === btn));
 }
 function pickScore(btn, v) {
   score = v;
@@ -150,11 +183,18 @@ async function submitEval() {
   if (!by) return showErr(isSat ? "请先填写姓名" : "请先填写授课老师姓名");
   let body;
   if (isSat) {
+    const rg = document.getElementById("region").value.trim();
+    if (!rg) return showErr("请先填写所在区域");
+    if (!dims.rhythm) return showErr("请先选择课程节奏评价");
+    if (!dims.content) return showErr("请先选择课程内容评价");
+    if (!dims.clarity) return showErr("请先选择讲解清晰度评价");
+    if (!score) return showErr("请先选择是否满意");
     const cm = document.getElementById("comment").value.trim();
-    if (!score) return showErr("请先选择整体满意度");
-    if (cm.length < 10) return showErr("意见与建议不少于10个字，当前 " + cm.length + " 字");
+    const nx = document.getElementById("next").value.trim();
     body = { game: "course_survey", store: storeIn, time: Date.now(), errors: 0,
-             name: JSON.stringify({ by: by, course: course, score: score, comment: cm }) };
+             name: JSON.stringify({ by: by, course: course, region: rg, rhythm: dims.rhythm,
+                                    content: dims.content, clarity: dims.clarity,
+                                    score: score, comment: cm, next: nx }) };
   } else {
     if (!pickedParts.size) return showErr("请先勾选你授课的板块");
     const NAME = { th: "理论培训", tech: "技术培训", prac: "门店实操" };
