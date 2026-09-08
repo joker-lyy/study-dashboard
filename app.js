@@ -6,7 +6,7 @@
 离职员工（empStatus != zc）不参与任何统计，统一归入「离职管理档案」
 */
 let DATA = null;
-let state = { tab: "概述", cat: null, planIdx: 0, sub: "区域汇总", empFilter: "全部", stageKey: null, range: "全部", rFrom: null, rTo: null,
+let state = { tab: "概述", cat: null, planIdx: 0, sub: "区域汇总", empFilter: "全部", stageKey: null, range: "全部", rFrom: null, rTo: null, gFilter: "全部",
   promoSub: "学习地图", promoMapIdx: 0, promoSince: "2026-09-01", evalSub: "新加盟商培训讲师评价" };
 const PLAN_EXCLUDE = ["测试", "XX", "xx", "课前准备", "174期", "煲饭"];
 const SURVEY_RE = /问卷|调查/; // 调查问卷类计划 → 归入 评价管理·课程满意度调研
@@ -59,9 +59,14 @@ function aggregate(plan, keyFn) {
 }
 
 function isSurvey(p) { return SURVEY_RE.test(p.planName || ""); }
+const PUB_GROUPS = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
 function plansOf(cat) {
-  return DATA.plans.filter(p => p.category === cat && !isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
+  let arr = DATA.plans.filter(p => p.category === cat && !isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
+  // 其他 Tab：只保留四个组发布的计划，支持组别筛选
+  if (cat === "其他") arr = arr.filter(p => p.pubGroup && (state.gFilter === "全部" || p.pubGroup === state.gFilter));
+  return arr;
 }
+function setGFilter(v) { state.gFilter = v; state.planIdx = 0; render(); }
 function surveysOf() {
   return DATA.plans.filter(p => p.category === "线上线下培训" && isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
 }
@@ -184,6 +189,7 @@ function renderCat() {
 
   el.innerHTML = `
     <div class="planbar">
+      ${state.cat === "其他" ? `<select onchange="setGFilter(this.value)">${["全部", ...PUB_GROUPS].map(g => `<option value="${g}" ${state.gFilter === g ? "selected" : ""}>${g === "全部" ? "全部组别" : g}</option>`).join("")}</select>` : ""}
       <select onchange="state.planIdx=+this.value;renderCat()">${opts}</select>
       <span class="badge b-gray">学员 ${(p.emps || []).length} 人</span>
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}
