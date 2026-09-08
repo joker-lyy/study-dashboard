@@ -212,7 +212,7 @@ function renderCat() {
   else if (state.sub === "门店分数排名及明细") body = storeRankTable(p);
   else body = (() => {
     const emps = (p.emps || []).filter(e => statusOf(e) != null);
-    return emps.length ? `<div style="font-size:12px;color:var(--t2);margin-bottom:6px">全体学习明细（门店列可区分所属门店），同「查看明细」格式</div>${aggDetailTable(p, emps)}` : `<div class="empty">暂无学员数据</div>`;
+    return emps.length ? `<div style="font-size:12px;color:var(--t2);margin-bottom:6px">全体学习明细（门店列可区分所属门店），同「查看明细」格式</div>${state.cat === "线上线下培训" ? flatDetailTable(p, emps) : aggDetailTable(p, emps)}` : `<div class="empty">暂无学员数据</div>`;
   })();
 
   el.innerHTML = `
@@ -318,6 +318,29 @@ function aggDetailTable(p, emps) {
     : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>实操</th><th>总进度</th>${stageNames.map(sn => `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${esc(sn)}</th>`).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
 }
 
+// 线上线下培训的明细版式：姓名/门店/区域/实操/考试分数/阶段进度/完成任务明细（抓取同新加盟商培训）
+function flatDetailTable(p, emps) {
+  const hasDet = p.empDetails && Object.keys(p.empDetails).length > 0;
+  if (!hasDet) return aggDetailTable(p, emps);
+  const rows = emps.map(e => {
+    const ts = planTasks(p, e);
+    const ops = ts.filter(t => [5, 7, 8].includes(t[1]));
+    const exams = ts.filter(t => t[1] === 4);
+    const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
+    const stat = empStat(p, e);
+    const scoreStr = exams.length ? exams.map(t => scoreCell(t, false)).join("</div><div>") : "—";
+    const detail = ts.map(t => {
+      const [name, type, st, score, isPass] = t;
+      const ok = st === "W";
+      let extra = "";
+      if (type === 4) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
+      return `<div style="padding:1px 0;color:${ok ? "var(--t1)" : "#e64340"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
+    }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
+    return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="white-space:nowrap">${esc(regionOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center"><div>${scoreStr}</div></td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td></tr>`;
+  }).join("");
+  return `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>实操</th><th>考试分数</th><th>阶段进度</th><th style="min-width:260px">完成任务明细</th></tr>${rows}</table>`;
+}
+
 function aggDetailRender(p, emps, title) {
   document.getElementById("mTitle").textContent = title;
   document.getElementById("mBody").innerHTML = `
@@ -325,7 +348,7 @@ function aggDetailRender(p, emps, title) {
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';aggReopen&&aggReopen()">${f}</button>`).join("")}
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
-    ${aggDetailTable(p, emps)}`;
+    ${state.cat === "线上线下培训" ? flatDetailTable(p, emps) : aggDetailTable(p, emps)}`;
   document.getElementById("mask").classList.add("show");
 }
 
