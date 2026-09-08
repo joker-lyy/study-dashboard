@@ -423,7 +423,7 @@ function genLink(kind) { // kind: "lecture"（老师评价门店，需选门店�
   }
   const label = isSurvey ? (c + " · 满意度调查") : (c + " · 讲师评价");
   const link = buildFormLink((isSurvey ? "type=sat&" : "type=lecture&") + (s ? "store=" + encodeURIComponent(s) + "&" : "") + "course=" + encodeURIComponent(c));
-  const copyText = `【${label}】\n${s ? "评价门店：" + s + "\n" : ""}填写链接：${link}\n（手机打开即可填写，提交后培训部看板可见）`;
+  const copyText = `【${label}】\n${s ? "评价门店：" + s + "\n" : ""}填写链接：${link}\n（手机打开即可填写，提交）`;
   qrLabel = label;
   lastLink = link;
   out.innerHTML = `
