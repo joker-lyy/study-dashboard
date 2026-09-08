@@ -435,14 +435,27 @@ function copyText() {
     if (btn) { const t = btn.textContent; btn.textContent = "已复制"; setTimeout(() => btn.textContent = t, 1500); }
   });
 }
+function storesOfPlanName(planName) {
+  const p = (DATA.plans || []).find(x => x.planName === planName);
+  if (!p) return [];
+  let stores = [...new Set((p.storeStats || []).map(s => s.storeName).filter(Boolean))];
+  if (!stores.length) stores = [...new Set((p.emps || []).map(e => (e.storeNames || "").trim()).filter(Boolean))]; // 直播课无门店统计时从学员列表兜底
+  return stores.sort((a, b) => a.localeCompare(b, "zh"));
+}
+function syncStores() {
+  const sel = document.getElementById("genStore");
+  if (!sel) return;
+  const stores = storesOfPlanName(document.getElementById("genCourse").value);
+  sel.innerHTML = stores.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("") || `<option value="">（该课程暂无门店数据）</option>`;
+}
 function linkGenHtml(kind, plans) {
   const opts = plans.map((p, i) => `<option value="${esc(p.planName)}">${esc(p.planName)}（${p.startDate || "?"}）</option>`).join("");
   return `<div class="sec">
     <h3>${kind === "survey" ? "满意度调查链接生成（课程嫁接）" : "讲师评价链接生成（课程嫁接）"}</h3>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${kind === "survey" ? "课程取自「线上线下培训」板块计划" : "课程取自「新加盟商培训」板块计划"}，链接与二维码均带课程名称+${kind === "survey" ? "满意度调查" : "讲师评价"}字样</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${kind === "survey" ? "课程取自「线上线下培训」板块计划" : "课程取自「新加盟商培训」板块计划"}，门店自动关联该课程的参训门店；链接与二维码均带课程名称+${kind === "survey" ? "满意度调查" : "讲师评价"}字样</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-      <select id="genCourse" style="flex:2;min-width:240px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff">${opts}</select>
-      <input id="genStore" placeholder="输入门店名" style="flex:1;min-width:160px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:14px">
+      <select id="genCourse" onchange="syncStores()" style="flex:2;min-width:240px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff">${opts}</select>
+      <select id="genStore" style="flex:1;min-width:160px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff"></select>
       <button class="btn" onclick="genLink('${kind}')">生成链接+二维码</button>
     </div>
     <div id="genOut" style="font-size:13px;color:var(--t2);word-break:break-all"></div>
@@ -483,6 +496,7 @@ function renderLectureEval() {
       <h3>各门店评价内容</h3>
       <table><tr><th style="width:180px">门店</th><th>评价内容</th></tr>${rows}</table>
     </div>`;
+  syncStores();
 }
 
 /* 目录二：课程满意度调研（慧运营问卷 + H5满意度提交） */
@@ -517,6 +531,7 @@ function renderSurvey() {
       <h3>门店提交的满意度（H5）</h3>
       <table><tr><th>门店</th><th>课程</th><th>满意度</th><th>意见与建议</th><th>提交时间</th></tr>${subRows}</table>
     </div>`;
+  syncStores();
 }
 function surveysInRange() { return surveysOf().filter(p => dateInrange(p.startDate)); }
 function openSurvey(idx) {
