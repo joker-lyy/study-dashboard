@@ -243,20 +243,47 @@ function openAgg(label, nameEnc, keep) {
   const isDone = e => { const st = empStat(p, e); return st && st.total > 0 && st.done >= st.total; };
   if (aggFilter === "已完成") emps = emps.filter(isDone);
   if (aggFilter === "未完成") emps = emps.filter(e => !isDone(e));
-  const rows = emps.map(e => {
+  // 阶段列表（按计划阶段顺序，去重）
+  const stageNames = [];
+  (function () {
+    const det0 = p.empDetails && Object.values(p.empDetails)[0];
+    (det0 && det0.stages || []).forEach(s => { if (s.n && !stageNames.includes(s.n)) stageNames.push(s.n); });
+    // 兜底：汇总所有学员出现的阶段
+    Object.values(p.empDetails || {}).forEach(det => (det.stages || []).forEach(s => { if (s.n && !stageNames.includes(s.n)) stageNames.push(s.n); }));
+  })();
+  const leaveOf = (sn, e) => {
+    const lv = p.leaves && p.leaves[sn];
+    return !!(lv && (lv.includes(String(e.employeeId)) || lv.includes(e.empName)));
+  };
+  const rows = emps.map((e, i) => {
     const ts = planTasks(p, e);
-    const learn = ts.filter(t => t[1] === 3), exams = ts.filter(t => t[1] === 4), ops = ts.filter(t => [5, 7, 8].includes(t[1]));
+    const ops = ts.filter(t => [5, 7, 8].includes(t[1]));
     const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
-    const scores = exams.map(t => +t[3]).filter(x => !isNaN(x));
     const stat = empStat(p, e);
-    const detail = ts.map(t => {
-      const [nm, type, st, score, isPass] = t;
-      const ok = st === "W";
-      let extra = "";
-      if (type === 4) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
-      return `<span class="badge ${ok ? "b-green" : "b-orange"}" style="margin:2px 4px 2px 0">${TYPE_NAME[type] || "任务"}${ok ? "✓" : "✗"}${extra}</span>`;
-    }).join("") || `<span class="badge b-gray">无任务数据</span>`;
-    return `<tr><td>${esc(e.empName)}</td><td style="max-width:130px">${esc(storeOf(e))}</td><td>${esc(mGroup(e).r)}</td><td>${cnt(learn)}</td><td>${scores.length ? scores.join("/") : "-"}</td><td>${cnt(ops)}</td><td>${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td></tr>`;
+    const det = p.empDetails && p.empDetails[String(e.employeeId)];
+    const dayCells = stageNames.map(sn => {
+      const stg = det && (det.stages || []).find(s => (s.n || "") === sn);
+      const sts = stg ? (stg.t || []) : [];
+      // 出勤：请假 > 已签到（有任务完成记录）> 未签到
+      let att = `<span class="badge b-orange">未签到</span>`;
+      if (leaveOf(sn, e)) att = `<span class="badge b-gray">请假</span>`;
+      else if (sts.some(t => t[5] && t[5] !== "-")) att = `<span class="badge b-green">已签到</span>`;
+      // 分数：该天全部考核，多科/隔开；未考=有考试未完成；—=无考试；红=未达80
+      const exams = sts.filter(t => t[1] === 4);
+      const learn = sts.filter(t => t[1] === 3);
+      let scoreStr = "—";
+      if (exams.length) {
+        scoreStr = exams.map(t => {
+          if (t[2] !== "W") return `<span style="color:var(--t2)">未考</span>`;
+          const n = +t[3];
+          if (isNaN(n)) return `<span style="color:var(--t2)">未考</span>`;
+          return `<span style="${n < 80 ? "color:#e64340;font-weight:600" : ""}">${n}</span>`;
+        }).join("/");
+      }
+      const learnStr = `<span style="font-size:11px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">课 ${cnt(learn)}</span>`;
+      return `<td style="text-align:center;white-space:nowrap">${att}</td><td style="text-align:center;white-space:nowrap">${scoreStr}<br>${learnStr}</td>`;
+    }).join("");
+    return `<tr><td>${i + 1}</td><td style="white-space:nowrap">${esc(e.empName)}</td><td style="max-width:130px">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
   document.getElementById("mTitle").textContent = (p.planName || "") + " · " + name + " · 学习明细";
   document.getElementById("mBody").innerHTML = `
@@ -264,8 +291,9 @@ function openAgg(label, nameEnc, keep) {
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';openAgg('${label}','${nameEnc}',true)">${f}</button>`).join("")}
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操为整个计划已完成/应完成；考试多个分数以 / 隔开；总进度=已完成/应完成。</div>
-    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>必修课</th><th>考试分数</th><th>实操</th><th>总进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：实操/总进度为整个计划口径；后面按<b>天（阶段）</b>展示，出勤=该天有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分；"课 x/y"=当天必修课完成数，红色=当天必修课未全部完成。</div>
+    ${rows ? `<table><tr><th rowspan="2">序号</th><th rowspan="2">姓名</th><th rowspan="2">门店</th><th rowspan="2">实操</th><th rowspan="2">总进度</th>${stageNames.map(sn => `<th colspan="2" style="text-align:center;border-left:1px solid var(--line)">${esc(sn)}</th>`).join("")}</tr>
+      ${stageNames.map(sn => `<th style="text-align:center;border-left:1px solid var(--line)">出勤</th><th style="text-align:center">分数</th>`).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
   document.getElementById("mask").classList.add("show");
 }
 
