@@ -418,15 +418,14 @@ function renderStageModal() {
     const stageDoneCnt = `${ts.filter(t => t[2] === "W").length}/${ts.length}`;
     const [attTxt, attCls] = attOf(e);
     const mg = mGroup(e);
-    // 任务明细：不重复课题名，只列内容完成情况
+    // 任务明细：一行一个课题「课题名：完成情况」
     const detail = ts.map(t => {
       const [name, type, st, score, isPass] = t;
       const ok = st === "W";
-      const label = TYPE_NAME[type] || "任务";
       let extra = "";
-      if (type === 4) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
-      return `<span class="badge ${ok ? "b-green" : "b-orange"}" style="margin:2px 4px 2px 0">${label}${ok ? "✓" : "✗"}${extra}</span>`;
-    }).join("") || `<span class="badge b-gray">无任务数据</span>`;
+      if (type === 4) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
+      return `<div style="padding:1px 0;color:${ok ? "var(--t1)" : "#e64340"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
+    }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
     return `<tr>
       <td>${esc(e.empName)}</td>
       <td style="max-width:130px">${esc(storeOf(e))}</td>
