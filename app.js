@@ -212,7 +212,15 @@ function renderCat() {
   else if (state.sub === "门店分数排名及明细") body = storeRankTable(p);
   else body = `<div style="margin-bottom:22px">${aggTable(aggregate(p, regionOf), "区域")}</div>
     <div style="margin-bottom:22px">${aggTable(aggregate(p, groupOf), "组别")}</div>
-    ${storeRankTable(p)}`;
+    ${storeRankTable(p)}
+    ${(() => {
+      const dets = (p.storeStats || []).map(s => {
+        const emps = (p.emps || []).filter(e => storeOf(e) === s.storeName && statusOf(e) != null);
+        if (!emps.length) return "";
+        return `<div style="margin-top:26px"><h3 style="margin:0 0 8px;font-size:15px">${esc(s.storeName)} · 学习明细</h3>${aggDetailTable(p, emps)}</div>`;
+      }).join("");
+      return dets ? `<div style="margin-top:10px"><h3>全部门店学习明细</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">以下按门店分数排名顺序，逐店展开学习明细（同「查看明细」格式）</div>${dets}</div>` : "";
+    })()}`;
 
   el.innerHTML = `
     ${gnav}
@@ -268,7 +276,7 @@ function aggFilterEmps(p, emps) {
   return emps;
 }
 // 弹窗正文：按天（阶段）一列展示出勤+分数（区域/组别/门店明细共用）
-function aggDetailRender(p, emps, title) {
+function aggDetailTable(p, emps) {
   // 阶段列表（按计划阶段顺序，去重）；无明细的计划（直播类等）回退完成状态
   const hasDet = p.empDetails && Object.keys(p.empDetails).length > 0;
   const stageNames = [];
@@ -311,15 +319,19 @@ function aggDetailRender(p, emps, title) {
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
+  return !hasDet
+    ? `<div style="font-size:12px;color:#b45309;background:#fff7e6;border:1px solid #ffe3a3;border-radius:8px;padding:8px 12px;margin-bottom:8px">⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。</div>${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
+    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>实操</th><th>总进度</th>${stageNames.map(sn => `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${esc(sn)}</th>`).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
+}
+
+function aggDetailRender(p, emps, title) {
   document.getElementById("mTitle").textContent = title;
   document.getElementById("mBody").innerHTML = `
     <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';aggReopen&&aggReopen()">${f}</button>`).join("")}
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
-    ${!hasDet
-      ? `<div style="font-size:12px;color:#b45309;background:#fff7e6;border:1px solid #ffe3a3;border-radius:8px;padding:8px 12px;margin-bottom:8px">⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。</div>${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
-      : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>实操</th><th>总进度</th>${stageNames.map(sn => `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${esc(sn)}</th>`).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`)}`;
+    ${aggDetailTable(p, emps)}`;
   document.getElementById("mask").classList.add("show");
 }
 
