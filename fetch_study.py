@@ -331,10 +331,22 @@ def main():
             "plans": []}
 
     n_ok = n_fail = 0
+    # 请假手工名单：data/leave.json（无文件视为空）
+    # 格式：{"planId或计划名": {"阶段名": ["员工ID或姓名", ...]}}
+    leaves = {}
+    if os.path.exists("data/leave.json"):
+        try:
+            leaves = json.load(open("data/leave.json", encoding="utf-8"))
+            print(f"请假名单: {len(leaves)} 个计划")
+        except Exception as e:
+            print(f"  [警告] leave.json 解析失败: {e}")
     for p in plans:
         print(f"- {p['_cat']} | {p['planName']}")
         try:
             detail = fetch_plan_detail(tok, p)
+            lv = leaves.get(str(p["planId"])) or leaves.get(p["planName"]) or {}
+            if lv:
+                detail["leaves"] = lv
             data["plans"].append(detail)
             n_ok += 1
         except Exception as e:

@@ -256,7 +256,7 @@ function openAgg(label, nameEnc, keep) {
       if (type === 4) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
       return `<span class="badge ${ok ? "b-green" : "b-orange"}" style="margin:2px 4px 2px 0">${TYPE_NAME[type] || "任务"}${ok ? "✓" : "✗"}${extra}</span>`;
     }).join("") || `<span class="badge b-gray">无任务数据</span>`;
-    return `<tr><td>${esc(e.empName)}</td><td style="max-width:130px">${esc(storeOf(e))}</td><td>${cnt(learn)}</td><td>${scores.length ? scores.join("/") : "-"}</td><td>${cnt(ops)}</td><td>${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td></tr>`;
+    return `<tr><td>${esc(e.empName)}</td><td style="max-width:130px">${esc(storeOf(e))}</td><td>${esc(mGroup(e).r)}</td><td>${cnt(learn)}</td><td>${scores.length ? scores.join("/") : "-"}</td><td>${cnt(ops)}</td><td>${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td></tr>`;
   }).join("");
   document.getElementById("mTitle").textContent = (p.planName || "") + " · " + name + " · 学习明细";
   document.getElementById("mBody").innerHTML = `
@@ -265,7 +265,7 @@ function openAgg(label, nameEnc, keep) {
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
     <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：学习/考试/实操为整个计划已完成/应完成；考试多个分数以 / 隔开；总进度=已完成/应完成。</div>
-    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>学习</th><th>考试分数</th><th>实操</th><th>总进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
+    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>学习</th><th>考试分数</th><th>实操</th><th>总进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
   document.getElementById("mask").classList.add("show");
 }
 
@@ -335,21 +335,46 @@ function renderStageModal() {
   const gset = state.dGroups, rset = state.dRegions;
   if (gset && Object.keys(gset).length) emps = emps.filter(e => gset[mGroup(e).g]);
   if (rset && Object.keys(rset).length) emps = emps.filter(e => rset[mGroup(e).r]);
-  // 已完成/未完成
-  const isDone = e => { const st = empStat(p, e); return st && st.total > 0 && st.done >= st.total; };
-  if (state.dStatus === "已完成") emps = emps.filter(isDone);
-  if (state.dStatus === "未完成") emps = emps.filter(e => !isDone(e));
+  // 已完成/未完成 —— 按该阶段口径（阶段内全部任务完成才算已完成）
+  const stageOf = e => {
+    const det = p.empDetails && p.empDetails[String(e.employeeId)];
+    return det && (det.stages || []).find(s => (s.n || "") === stageName);
+  };
+  const stageDone = e => {
+    const stg = stageOf(e);
+    if (!stg) return false;
+    const ts = stg.t || [];
+    return ts.length > 0 && ts.every(t => t[2] === "W");
+  };
+  if (state.dStatus === "已完成") emps = emps.filter(stageDone);
+  if (state.dStatus === "未完成") emps = emps.filter(e => !stageDone(e));
   const regions = uniqSort(emps.map(e => mGroup(e).r));
   const boxes = (kind, set, opts) => opts.map(o => `<label style="margin:0 10px 0 0;white-space:nowrap;cursor:pointer"><input type="checkbox" ${set[o] ? "checked" : ""} onclick="toggleDFilter('${kind}','${esc(o)}',this)" style="vertical-align:-2px"> ${esc(o)}</label>`).join("");
+  // 出勤：请假（data/leave.json 手工名单）> 已签到（该阶段有任务完成记录）> 未签到
+  const attOf = e => {
+    const lv = p.leaves && p.leaves[stageName];
+    if (lv && (lv.includes(String(e.employeeId)) || lv.includes(e.empName))) return ["请假", "b-gray"];
+    const stg = stageOf(e);
+    if (stg && (stg.t || []).some(t => t[5] && t[5] !== "-")) return ["已签到", "b-green"];
+    return ["未签到", "b-orange"];
+  };
   const rows = emps.map(e => {
-    const det = p.empDetails && p.empDetails[String(e.employeeId)];
-    const stage = det && (det.stages || []).find(s => (s.n || "") === stageName);
+    const stage = stageOf(e);
     const ts = stage ? stage.t : [];
     const learn = ts.filter(t => t[1] === 3), exams = ts.filter(t => t[1] === 4), ops = ts.filter(t => [5, 7, 8].includes(t[1]));
     const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
-    const scores = exams.map(t => +t[3]).filter(x => !isNaN(x));
-    const scoreStr = scores.length ? scores.join("/") : "-";
-    const stat = empStat(p, e);
+    // 分数：该阶段全部考核，多科以/隔开；未考=有考试未完成；—=无考试；红=未达80
+    let scoreStr = "—";
+    if (exams.length) {
+      scoreStr = exams.map(t => {
+        if (t[2] !== "W") return `<span style="color:var(--t2)">未考</span>`;
+        const n = +t[3];
+        if (isNaN(n)) return `<span style="color:var(--t2)">未考</span>`;
+        return `<span style="${n < 80 ? "color:#e64340;font-weight:600" : ""}">${n}分</span>`;
+      }).join("/");
+    }
+    const stageDoneCnt = `${ts.filter(t => t[2] === "W").length}/${ts.length}`;
+    const [attTxt, attCls] = attOf(e);
     const mg = mGroup(e);
     // 任务明细：不重复课题名，只列内容完成情况
     const detail = ts.map(t => {
@@ -363,15 +388,17 @@ function renderStageModal() {
     return `<tr>
       <td>${esc(e.empName)}</td>
       <td style="max-width:130px">${esc(storeOf(e))}</td>
+      <td>${esc(mg.r)}</td>
+      <td><span class="badge ${attCls}">${attTxt}</span></td>
       <td>${cnt(learn)}</td>
       <td>${scoreStr}</td>
       <td>${cnt(ops)}</td>
-      <td>${stat ? `${stat.done}/${stat.total}` : "-"}</td>
+      <td>${stageDoneCnt}</td>
       <td>${detail}</td>
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：学习/考试/实操为该阶段已完成/应完成；考试多个分数以 / 隔开；总进度=整个计划已完成/应完成。</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：学习/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。</div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
@@ -385,7 +412,7 @@ function renderStageModal() {
       </select>
       <span style="color:var(--t2);margin-left:8px">共 ${emps.length} 人</span>
     </div>
-    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>学习</th><th>考试分数</th><th>实操</th><th>总进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
+    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>出勤</th><th>学习</th><th>考试分数</th><th>实操</th><th>阶段进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
 }
 
 /* ---------- 门店明细弹窗 ---------- */
