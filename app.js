@@ -378,7 +378,7 @@ function storeRankTable(p) {
   const shown = kw ? rows.filter(r => (r.s.storeName || "").toLowerCase().includes(kw) || (r.region || "").toLowerCase().includes(kw)) : rows;
   if (!rows.length) return `<div class="empty">暂无门店数据</div>`;
   return `<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
-    <input id="storeSearch" placeholder="搜索门店 / 区域…" value="${esc(state.storeSearch || "")}" oninput="state.storeSearch=this.value;renderCat();setTimeout(()=>{var i=document.getElementById('storeSearch');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},0)" style="padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;width:220px">
+    <input id="storeSearch" placeholder="搜索门店 / 区域…" value="${esc(state.storeSearch || "")}" oninput="state.storeSearch=this.value;if(!window.__storeSearchIME)setTimeout(()=>{if(!window.__storeSearchIME){renderCat();var i=document.getElementById('storeSearch');if(i){i.focus();var v=i.value;i.setSelectionRange(v.length,v.length);}}},300)" oncompositionstart="window.__storeSearchIME=1" oncompositionend="window.__storeSearchIME=0;state.storeSearch=this.value;renderCat()" onkeydown="if(event.key==='Enter'){window.__storeSearchIME=0;state.storeSearch=this.value;renderCat()}" style="padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;width:220px">
     <span style="font-size:12px;color:var(--t2)">${kw ? `匹配 ${shown.length} / ${rows.length} 家` : `共 ${rows.length} 家`}</span>
   </div>
   <table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th>已完成人数</th><th>完成率</th><th>状态</th><th style="width:90px">操作</th></tr>
