@@ -374,9 +374,15 @@ function storeRankTable(p) {
     const link = (s.organizeLink || "").split("/").filter(Boolean);
     return { s, rate, empN: emps.length, doneN, region: link[link.length - 1] || "" };
   }).sort((a, b) => b.rate - a.rate);
+  const kw = (state.storeSearch || "").trim().toLowerCase();
+  const shown = kw ? rows.filter(r => (r.s.storeName || "").toLowerCase().includes(kw) || (r.region || "").toLowerCase().includes(kw)) : rows;
   if (!rows.length) return `<div class="empty">暂无门店数据</div>`;
-  return `<table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th>已完成人数</th><th>完成率</th><th>状态</th><th style="width:90px">操作</th></tr>
-    ${rows.map((r, i) => `<tr>
+  return `<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+    <input id="storeSearch" placeholder="搜索门店 / 区域…" value="${esc(state.storeSearch || "")}" oninput="state.storeSearch=this.value;renderCat();setTimeout(()=>{var i=document.getElementById('storeSearch');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},0)" style="padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;width:220px">
+    <span style="font-size:12px;color:var(--t2)">${kw ? `匹配 ${shown.length} / ${rows.length} 家` : `共 ${rows.length} 家`}</span>
+  </div>
+  <table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th>已完成人数</th><th>完成率</th><th>状态</th><th style="width:90px">操作</th></tr>
+    ${shown.map((r, i) => `<tr>
       <td>${i + 1}</td><td style="white-space:nowrap">${esc(r.s.storeName)}</td>
       <td style="color:var(--t2)">${esc(r.region)}</td>
       <td style="text-align:center">${r.empN}</td><td style="text-align:center">${r.doneN}</td>
@@ -500,11 +506,9 @@ function renderStageModal() {
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>区域：</b>${boxes("Regions", rset, regions)}
     </div>
-    <div style="margin-bottom:8px;font-size:13px">
+    <div style="margin-bottom:8px;font-size:13px;display:flex;align-items:center;gap:6px">
       <b>完成状态：</b>
-      <select onchange="setDStatus(this.value)">
-        ${["全部", "已完成", "未完成"].map(o => `<option value="${o}" ${state.dStatus === o ? "selected" : ""}>${o}</option>`).join("")}
-      </select>
+      ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${state.dStatus === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="setDStatus('${f}')">${f}</button>`).join("")}
       <span style="color:var(--t2);margin-left:8px">共 ${emps.length} 人</span>
     </div>
     ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>出勤</th><th>必修课</th><th>考试分数</th><th>实操</th><th>阶段进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
