@@ -6,8 +6,9 @@
 离职员工（empStatus != zc）不参与任何统计，统一归入「离职管理档案」
 */
 let DATA = null;
-let state = { tab: "概述", cat: null, planIdx: 0, sub: "区域汇总", empFilter: "全部", stageKey: null, range: "全部", rFrom: null, rTo: null, gFilter: "全部",
-  promoSub: "学习地图", promoMapIdx: 0, promoSince: "2026-09-01", evalSub: "新加盟商培训讲师评价" };
+let state = { tab: "概述", cat: null, planIdx: 0, sub: "区域汇总", empFilter: "全部", stageKey: null, range: "本月", rFrom: null, rTo: null, gFilter: "全部",
+  promoSub: "学习地图", promoMapIdx: 0, promoSince: "2026-09-01", evalSub: "新加盟商培训讲师评价",
+  pRegion: "全部", pGroup: "全部", pStore: "全部" };
 const PLAN_EXCLUDE = ["测试", "XX", "xx", "课前准备", "174期", "煲饭"];
 const SURVEY_RE = /问卷|调查/; // 调查问卷类计划 → 归入 评价管理·课程满意度调研
 const TYPE_NAME = { 3: "学习", 4: "考试", 5: "作业", 7: "表单", 8: "实操" };
@@ -39,17 +40,19 @@ function statusOf(emp) {
   return emp.trainingStatus;
 }
 
-// 计划内按 key 聚合学员
+// 计划内按 key 聚合学员（状态以员工明细 done/total 为准，trainingStatus 不可靠）
 function aggregate(plan, keyFn) {
   const map = {};
   (plan.emps || []).forEach(e => {
     const st = statusOf(e);
     if (st == null) return;
+    const s = empStat(plan, e);
+    const status = s ? s.status : st; // 有明细用明细，无明细回退列表状态
     const k = keyFn(e);
     if (!map[k]) map[k] = { name: k, total: 0, done: 0, doing: 0, todo: 0 };
     map[k].total++;
-    if (st === 2) map[k].done++;
-    else if (st === 1) map[k].doing++;
+    if (status === 2) map[k].done++;
+    else if (status === 1) map[k].doing++;
     else map[k].todo++;
   });
   const arr = Object.values(map);
@@ -164,6 +167,11 @@ function renderCat() {
   const opts = plans.map((x, i) => `<option value="${i}" ${i === state.planIdx ? "selected" : ""}>${esc(x.planName)}（${x.startDate || "?"}）</option>`).join("");
   const ov = p.overview || {};
 
+  // 学习时间：优先平台有效期（"起 至 止"），否则计划起止日期，两行显示
+  const validRaw = ov.periodOfValidity || "";
+  const [vFrom, vTo] = validRaw.includes("至") ? validRaw.split("至").map(x => x.trim()) : [p.startDate, p.endDate];
+  const timeCard = `<div class="card"><div class="k">学习时间</div><div class="v" style="font-size:14px;line-height:2;text-align:left">开始：${esc(vFrom || "-")}<br>结束：${esc(vTo || "-")}</div></div>`;
+
   // 概述卡片
   const cards = `
     <div class="cards">
@@ -172,7 +180,7 @@ function renderCat() {
       <div class="card"><div class="k">完成率</div><div class="v">${pct(ov.percentageComplete).toFixed(1) || 0}<small>%</small></div></div>
       <div class="card"><div class="k">应学门店</div><div class="v">${ov.shouldTrainStoreCount ?? (p.storeStats || []).length}</div></div>
       <div class="card"><div class="k">已参训门店</div><div class="v">${ov.trainedStoreCount ?? "-"}</div></div>
-      <div class="card"><div class="k">有效期</div><div class="v" style="font-size:15px;line-height:2.2">${esc(ov.periodOfValidity || (p.startDate + " ~ " + p.endDate))}</div></div>
+      ${timeCard}
     </div>`;
 
   // 阶段统计（行可点 -> 阶段学员明细）
@@ -323,6 +331,9 @@ function renderStoreModal() {
 function closeModal() { document.getElementById("mask").classList.remove("show"); }
 
 /* ---------- 员工培训/晋升 · 学习地图 ---------- */
+function setPRegion(v) { state.pRegion = v; state.pGroup = "全部"; state.pStore = "全部"; renderPromo(); }
+function setPGroup(v) { state.pGroup = v; state.pStore = "全部"; renderPromo(); }
+function setPStore(v) { state.pStore = v; renderPromo(); }
 function renderPromo() {
   const el = document.getElementById("main");
   const maps = DATA.maps || [];
@@ -332,7 +343,22 @@ function renderPromo() {
   const mp = maps[state.promoMapIdx];
   const all = mp.emps || [];
   // 注册日期筛选（issueDate = 地图发放/注册时间）
-  const emps = state.promoSince ? all.filter(e => (e.issueDate || "").slice(0, 10) >= state.promoSince) : all;
+  const all0 = state.promoSince ? all.filter(e => (e.issueDate || "").slice(0, 10) >= state.promoSince) : all;
+  // 区域 / 组别 / 门店 级联导航筛选（作用于下方卡片与两张表）
+  const uniqSort = a => [...new Set(a)].sort();
+  const fRegion = all0.filter(e => state.pRegion === "全部" || regionOf(e) === state.pRegion);
+  const fGroup = fRegion.filter(e => state.pGroup === "全部" || groupOf(e) === state.pGroup);
+  const emps = fGroup.filter(e => state.pStore === "全部" || storeOf(e) === state.pStore);
+  const navSel = (label, opts, cur, fn) => `<span style="font-size:13px;color:var(--t2)">${label}</span>
+    <select onchange="${fn}(this.value)" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;max-width:200px">
+      ${opts.map(o => `<option value="${esc(o)}" ${cur === o ? "selected" : ""}>${esc(o)}</option>`).join("")}
+    </select>`;
+  const navBar = `<div class="planbar">
+    ${navSel("区域", ["全部", ...uniqSort(all0.map(regionOf))], state.pRegion, "setPRegion")}
+    ${navSel("组别", ["全部", ...uniqSort(fRegion.map(groupOf))], state.pGroup, "setPGroup")}
+    ${navSel("门店", ["全部", ...uniqSort(fGroup.map(storeOf))], state.pStore, "setPStore")}
+    ${(state.pRegion !== "全部" || state.pGroup !== "全部" || state.pStore !== "全部") ? `<button class="btn" style="padding:6px 12px;font-size:12px;background:var(--navy)" onclick="setPRegion('全部');setPGroup('全部');setPStore('全部')">清空筛选</button>` : ""}
+  </div>`;
   const num = e => parseFloat(e.completionSchedule) || 0;
   const doneN = emps.filter(e => num(e) >= 100).length;
   const avgP = emps.length ? emps.reduce((a, e) => a + num(e), 0) / emps.length : 0;
@@ -345,7 +371,7 @@ function renderPromo() {
   });
   const posRows = Object.entries(byPos).sort((a, b) => b[1].n - a[1].n).map(([k, v]) =>
     `<tr><td>${esc(k)}</td><td>${v.n}</td><td>${v.done}</td><td>${barHtml(v.sum / v.n)}</td></tr>`).join("")
-    || `<tr><td colspan=4 class=empty>该日期后无注册人员</td></tr>`;
+    || `<tr><td colspan=4 class=empty>无符合筛选条件的人员</td></tr>`;
   // 员工明细
   const empRows = emps.slice().sort((a, b) => num(b) - num(a)).map(e => {
     const p = num(e);
@@ -354,7 +380,7 @@ function renderPromo() {
       <td style="color:var(--t2)">${esc(e.stageName || "")}</td>
       <td>${barHtml(p)}</td><td><span class="badge ${st[1]}">${st[0]}</span></td>
       <td style="color:var(--t2);font-size:12px">${(e.issueDate || "").slice(0, 10)}</td></tr>`;
-  }).join("") || `<tr><td colspan=7 class=empty>该日期后无注册人员</td></tr>`;
+  }).join("") || `<tr><td colspan=7 class=empty>无符合筛选条件的人员</td></tr>`;
   el.innerHTML = `
     <div class="planbar">
       <select onchange="state.promoMapIdx=+this.value;renderPromo()">${maps.map((m, i) => `<option value="${i}" ${i === state.promoMapIdx ? "selected" : ""}>${esc(m.mapName)}（${m.empCount}人）</option>`).join("")}</select>
@@ -364,6 +390,7 @@ function renderPromo() {
       <input type="date" value="${state.promoSince}" onchange="state.promoSince=this.value;renderPromo()" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
       ${state.promoSince ? `<button class="btn" style="padding:6px 12px;font-size:12px;background:var(--navy)" onclick="state.promoSince='';renderPromo()">看全部</button>` : ""}
     </div>
+    ${navBar}
     <div class="cards">
       <div class="card"><div class="k">注册人数（${state.promoSince ? state.promoSince + " 起" : "全部"}）</div><div class="v">${emps.length}</div></div>
       <div class="card"><div class="k">已完成</div><div class="v">${doneN}</div></div>
