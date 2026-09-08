@@ -222,8 +222,51 @@ function renderCat() {
 
 function aggTable(arr, label) {
   if (!arr.length) return `<div class="empty">暂无学员数据</div>`;
-  return `<table><tr><th>${label}</th><th>总人数</th><th>已完成</th><th>进行中</th><th>未开始</th><th>完成率</th></tr>
-    ${arr.map(a => `<tr><td>${esc(a.name)}</td><td>${a.total}</td><td>${a.done}</td><td>${a.doing}</td><td>${a.todo}</td><td>${barHtml(a.rate)}</td></tr>`).join("")}</table>`;
+  return `<table><tr><th>${label}</th><th>总人数</th><th>已完成</th><th>进行中</th><th>未开始</th><th>完成率</th><th style="width:90px">操作</th></tr>
+    ${arr.map(a => `<tr><td>${esc(a.name)}</td><td>${a.total}</td><td>${a.done}</td><td>${a.doing}</td><td>${a.todo}</td><td>${barHtml(a.rate)}</td>
+      <td><button class="btn" style="padding:5px 12px;font-size:12px" onclick="openAgg('${label}','${encodeURIComponent(a.name)}')">查看明细</button></td></tr>`).join("")}</table>`;
+}
+/* 二级汇总行明细：区域/组别 -> 学员整计划学习明细 */
+let aggFilter = "全部";
+function planTasks(p, e) { // 整计划所有阶段任务拍平
+  const det = p.empDetails && p.empDetails[String(e.employeeId)];
+  if (!det || !det.stages) return [];
+  return det.stages.reduce((a, s) => a.concat(s.t || []), []);
+}
+function openAgg(label, nameEnc, keep) {
+  const name = decodeURIComponent(nameEnc);
+  if (!keep) aggFilter = "全部";
+  const plans = plansInRange(state.cat);
+  const p = plans[state.planIdx];
+  const keyFn = label === "区域" ? regionOf : groupOf;
+  let emps = (p.emps || []).filter(e => statusOf(e) != null && keyFn(e) === name);
+  const isDone = e => { const st = empStat(p, e); return st && st.total > 0 && st.done >= st.total; };
+  if (aggFilter === "已完成") emps = emps.filter(isDone);
+  if (aggFilter === "未完成") emps = emps.filter(e => !isDone(e));
+  const rows = emps.map(e => {
+    const ts = planTasks(p, e);
+    const learn = ts.filter(t => t[1] === 3), exams = ts.filter(t => t[1] === 4), ops = ts.filter(t => [5, 7, 8].includes(t[1]));
+    const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
+    const scores = exams.map(t => +t[3]).filter(x => !isNaN(x));
+    const stat = empStat(p, e);
+    const detail = ts.map(t => {
+      const [nm, type, st, score, isPass] = t;
+      const ok = st === "W";
+      let extra = "";
+      if (type === 4) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
+      return `<span class="badge ${ok ? "b-green" : "b-orange"}" style="margin:2px 4px 2px 0">${TYPE_NAME[type] || "任务"}${ok ? "✓" : "✗"}${extra}</span>`;
+    }).join("") || `<span class="badge b-gray">无任务数据</span>`;
+    return `<tr><td>${esc(e.empName)}</td><td style="max-width:130px">${esc(storeOf(e))}</td><td>${cnt(learn)}</td><td>${scores.length ? scores.join("/") : "-"}</td><td>${cnt(ops)}</td><td>${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td></tr>`;
+  }).join("");
+  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + name + " · 学习明细";
+  document.getElementById("mBody").innerHTML = `
+    <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
+      ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';openAgg('${label}','${nameEnc}',true)">${f}</button>`).join("")}
+      <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
+    </div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：学习/考试/实操为整个计划已完成/应完成；考试多个分数以 / 隔开；总进度=已完成/应完成。</div>
+    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>学习</th><th>考试分数</th><th>实操</th><th>总进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
+  document.getElementById("mask").classList.add("show");
 }
 
 /* ---------- 门店分数排名 ---------- */
