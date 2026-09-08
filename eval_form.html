@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>新加盟商培训 · 讲师评估</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:#F4F6FA; min-height:100vh; color:#1A2A4A; }
+  .head { background:linear-gradient(135deg,#1A2A4A,#24395E); color:#fff; padding:28px 20px 22px; border-radius:0 0 20px 20px; }
+  .head .tag { display:inline-block; background:#FDD01B; color:#1A2A4A; font-size:12px; font-weight:700; padding:3px 10px; border-radius:20px; margin-bottom:10px; }
+  .head h1 { font-size:20px; letter-spacing:1px; }
+  .head .store { margin-top:10px; font-size:15px; color:#FDD01B; font-weight:600; }
+  .head .sub { margin-top:4px; font-size:12px; opacity:.75; }
+  .wrap { padding:16px 16px 40px; max-width:520px; margin:0 auto; }
+  .mod { background:#fff; border-radius:14px; padding:14px 14px 12px; margin-bottom:14px; box-shadow:0 2px 10px rgba(26,42,74,.06); }
+  .mod .t { font-size:15px; font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+  .mod .t i { width:6px; height:16px; border-radius:3px; background:#186BEB; display:inline-block; }
+  .mod .d { font-size:12px; color:#8A93A6; margin-bottom:8px; }
+  textarea { width:100%; min-height:96px; border:1.5px solid #E3E8F0; border-radius:10px; padding:10px 12px; font-size:14px; color:#1A2A4A; resize:vertical; font-family:inherit; line-height:1.6; }
+  textarea:focus { outline:none; border-color:#186BEB; }
+  .field { background:#fff; border-radius:14px; padding:14px; margin-bottom:14px; box-shadow:0 2px 10px rgba(26,42,74,.06); }
+  .field input { width:100%; border:1.5px solid #E3E8F0; border-radius:10px; padding:11px 12px; font-size:14px; color:#1A2A4A; }
+  .field input:focus { outline:none; border-color:#186BEB; }
+  #submitBtn { width:100%; border:none; border-radius:12px; background:#186BEB; color:#fff; font-size:16px; font-weight:700; padding:14px; letter-spacing:2px; box-shadow:0 4px 14px rgba(24,107,235,.35); }
+  #submitBtn:disabled { background:#9BB8E8; box-shadow:none; }
+  #tip { text-align:center; font-size:12px; color:#8A93A6; margin-top:12px; line-height:1.6; }
+  .done { text-align:center; padding:60px 20px; }
+  .done .ico { font-size:56px; }
+  .done h2 { margin:14px 0 8px; font-size:20px; }
+  .done p { color:#8A93A6; font-size:14px; line-height:1.7; }
+  .err { background:#FFF2F0; color:#D9363E; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px; display:none; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <span class="tag">培训部</span>
+    <h1>新加盟商培训 · 讲师评估</h1>
+    <div class="store" id="storeName">门店加载中…</div>
+    <div class="sub">以门店为单位填写，请结合本期培训真实感受，评语将用于改进培训质量</div>
+  </div>
+  <div class="wrap" id="formWrap">
+    <div class="err" id="errBox"></div>
+    <div class="field">
+      <div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>填写人</div>
+      <div class="d">门店店长 / 参训伙伴姓名</div></div>
+      <input id="by" placeholder="请输入姓名" />
+    </div>
+    <div class="mod">
+      <div class="t"><i></i>理论培训评语</div>
+      <div class="d">讲师授课清晰度、内容实用性、课堂氛围、答疑情况等</div>
+      <textarea id="th" placeholder="请输入理论培训评语（不少于10个字）"></textarea>
+    </div>
+    <div class="mod">
+      <div class="t"><i></i>技术培训评语</div>
+      <div class="d">手法示范、练习辅导、考核把关、进度安排等</div>
+      <textarea id="tech" placeholder="请输入技术培训评语（不少于10个字）"></textarea>
+    </div>
+    <div class="mod">
+      <div class="t"><i></i>门店实操评语</div>
+      <div class="d">回店后上手情况、落地指导、跟踪支持等</div>
+      <textarea id="prac" placeholder="请输入门店实操评语（不少于10个字）"></textarea>
+    </div>
+    <button id="submitBtn" onclick="submitEval()">提 交 评 估</button>
+    <div id="tip">提交后培训部可在看板端查看 · 请勿填写与培训无关的内容</div>
+  </div>
+<script>
+const ANON = "sb_publishable_bMQvqugXZvjgs9w5y_2ZJA_LETBEnjO";
+const URL_BASE = "https://furiqmhvflnjllrwfhyw.supabase.co/rest/v1/puzzle_records";
+const qs = new URLSearchParams(location.search);
+const store = (qs.get("store") || "").trim();
+document.getElementById("storeName").textContent = store ? "评估门店：" + store : "⚠️ 链接缺少门店参数，请联系培训部重新发送";
+
+function showErr(m) { const b = document.getElementById("errBox"); b.textContent = m; b.style.display = "block"; b.scrollIntoView({behavior:"smooth"}); }
+
+async function submitEval() {
+  if (!store) return showErr("链接缺少门店参数，请联系培训部重新发送");
+  const by = document.getElementById("by").value.trim();
+  const parts = ["th","tech","prac"].map(id => ({ id, v: document.getElementById(id).value.trim(), name: {th:"理论培训",tech:"技术培训",prac:"门店实操"}[id] }));
+  if (!by) return showErr("请先填写姓名");
+  for (const p of parts) if (p.v.length < 10) return showErr(p.name + "评语不少于10个字，当前 " + p.v.length + " 字");
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "提交中…";
+  const body = {
+    game: "lecture_eval",
+    store: store,
+    time: Date.now(),
+    errors: 0,
+    name: JSON.stringify({ by: by, th: parts[0].v, tech: parts[1].v, prac: parts[2].v })
+  };
+  try {
+    const r = await fetch(URL_BASE, {
+      method: "POST",
+      headers: { "apikey": ANON, "Authorization": "Bearer " + ANON, "Content-Type": "application/json", "Prefer": "return=minimal" },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    document.getElementById("formWrap").innerHTML = `<div class="done"><div class="ico">✅</div><h2>提交成功</h2><p>感谢「${store}」的反馈！<br>你的评语已送达培训部，将用于改进后续培训。</p></div>`;
+    window.scrollTo(0, 0);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "提 交 评 估";
+    showErr("提交失败（" + e.message + "），请检查网络后重试");
+  }
+}
+</script>
+</body>
+</html>
