@@ -64,10 +64,10 @@ function aggregate(plan, keyFn) {
 
 function isSurvey(p) { return SURVEY_RE.test(p.planName || ""); }
 const PUB_GROUPS = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
-function plansOf(cat) {
+function plansOf(cat, gOverride) {
   let arr = DATA.plans.filter(p => p.category === cat && !isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
-  // 其他 Tab：只保留四个组发布的计划，支持组别筛选
-  if (cat === "其他") arr = arr.filter(p => p.pubGroup && (state.gFilter === "全部" || p.pubGroup === state.gFilter));
+  // 其他 Tab：只保留四个组发布的计划，支持组别导航筛选
+  if (cat === "其他") { const g = gOverride || state.gFilter; arr = arr.filter(p => p.pubGroup && (g === "全部" || p.pubGroup === g)); }
   return arr;
 }
 function setGFilter(v) { state.gFilter = v; state.planIdx = 0; render(); }
@@ -98,7 +98,7 @@ function dateInrange(dateStr) {
   if (to && d > to) return false;
   return true;
 }
-function plansInRange(cat) { return plansOf(cat).filter(p => dateInrange(p.startDate)); }
+function plansInRange(cat, gOverride) { return plansOf(cat, gOverride).filter(p => dateInrange(p.startDate)); }
 function setRange(r) {
   state.range = r;
   if (r === "区间") {
@@ -160,8 +160,14 @@ function renderOverview() {
 /* ---------- 分类页 ---------- */
 function renderCat() {
   const el = document.getElementById("main");
+  // 其他 Tab：组别固定导航（始终可见，带数量），避免筛选到空组别后"回不去"
+  const gnav = state.cat === "其他" ? `<div class="planbar" style="flex-wrap:wrap">
+    ${["全部", ...PUB_GROUPS].map(g => {
+      const n = plansInRange("其他", g).length;
+      return `<button class="btn" style="padding:7px 14px;font-size:13px;${state.gFilter === g ? "" : "background:var(--line);color:var(--t1)"}" onclick="setGFilter('${g}')">${g === "全部" ? "全部组别" : g}<span style="opacity:.75;margin-left:4px">${n}</span></button>`;
+    }).join("")}</div>` : "";
   const plans = plansInRange(state.cat);
-  if (!plans.length) { el.innerHTML = `<div class="sec empty">该分类暂无计划数据</div>`; return; }
+  if (!plans.length) { el.innerHTML = gnav + `<div class="sec empty">该组别暂无计划数据</div>`; return; }
   state.planIdx = Math.min(state.planIdx, plans.length - 1);
   const p = plans[state.planIdx];
 
@@ -197,8 +203,8 @@ function renderCat() {
   else body = storeRankTable(p);
 
   el.innerHTML = `
+    ${gnav}
     <div class="planbar">
-      ${state.cat === "其他" ? `<select onchange="setGFilter(this.value)">${["全部", ...PUB_GROUPS].map(g => `<option value="${g}" ${state.gFilter === g ? "selected" : ""}>${g === "全部" ? "全部组别" : g}</option>`).join("")}</select>` : ""}
       <select onchange="state.planIdx=+this.value;renderCat()">${opts}</select>
       <span class="badge b-gray">学员 ${(p.emps || []).length} 人</span>
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}

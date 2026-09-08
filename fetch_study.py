@@ -66,6 +66,27 @@ def call(tok, path, body):
     except Exception as e:
         return None, str(e)[:120]
 
+# 「其他」Tab 组别归属：按发布组织映射；培训组(直营组)仅认培训组成员发布
+# （高瑞瑜/黄昭航/潘英化/赖奕毅），门店员工发的剔除
+PUB_GROUPS = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"]
+TRAIN_GROUP_CREATORS = {"10000000000108", "10000000000279", "10000000000989", "10000000000991"}
+
+def pub_group(r):
+    org = r.get("organizeNames") or ""
+    if "新店运营组" in org:
+        g = "新店运营组"
+    elif "加盟营运组" in org:
+        g = "加盟营运组"
+    elif "新店筹建组" in org:
+        g = "新店筹建组"
+    elif "培训组" in org or "直营组" in org:
+        g = "培训组(直营组)"
+    else:
+        return None
+    if g == "培训组(直营组)" and str(r.get("creator")) not in TRAIN_GROUP_CREATORS:
+        return None
+    return g
+
 def fetch_all_plans(tok):
     plans, page = [], 1
     while True:
@@ -85,6 +106,7 @@ def fetch_all_plans(tok):
                 "planStatus": r.get("planStatus"),
                 "creator": r.get("creator"),
                 "organizeNames": r.get("organizeNames"),
+                "pubGroup": pub_group(r),
             })
         if d.get("lastPage") or page >= 20:
             break
@@ -96,7 +118,7 @@ def fetch_plan_detail(tok, plan):
     pid = plan["planId"]
     out = {"planId": pid, "planName": plan["planName"], "category": plan["_cat"],
            "categoryName": plan["categoryName"], "startDate": plan["startDate"],
-           "endDate": plan["endDate"], "planStatus": plan["planStatus"], "creator": plan["creator"]}
+           "endDate": plan["endDate"], "planStatus": plan["planStatus"], "creator": plan["creator"], "pubGroup": plan.get("pubGroup")}
 
     d, err = call(tok, "/web/train/report/statisticalOverview?version=1", {"planId": pid})
     out["overview"] = d if d else None
