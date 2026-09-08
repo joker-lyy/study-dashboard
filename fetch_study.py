@@ -77,6 +77,8 @@ def pub_group(r):
     creator = str(r.get("creator"))
     if creator in TRAIN_GROUP_CREATORS:
         return "培训组(直营组)"
+    if creator in STORE_EXCLUDE_CREATORS:
+        return None  # 门店员工（直营组的人）自建任务一律剔除，不看发布组织
     org = r.get("organizeNames") or ""
     if "新店运营组" in org:
         g = "新店运营组"
@@ -84,8 +86,6 @@ def pub_group(r):
         g = "加盟营运组"
     elif "新店筹建组" in org:
         g = "新店筹建组"
-    elif ("培训组" in org or "直营组" in org) and creator in STORE_EXCLUDE_CREATORS:
-        return None  # 门店员工借培训组组织发的，剔除
     else:
         return None
     return g
