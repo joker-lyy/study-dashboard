@@ -306,9 +306,10 @@ function aggDetailTable(p, emps) {
       const learn = sts.filter(t => t[1] === 3);
       let scoreStr = "—";
       if (exams.length) {
-        scoreStr = exams.map(t => scoreCell(t, false)).join("/");
+        // 多科竖排，每科一行，避免横向超出格子
+        scoreStr = exams.map(t => scoreCell(t, false)).join("</div><div>");
       }
-      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.6"><div>${att}</div><div style="white-space:nowrap">${scoreStr}</div></td>`;
+      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div></td>`;
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
