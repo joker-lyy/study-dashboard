@@ -6,7 +6,7 @@
 离职员工（empStatus != zc）不参与任何统计，统一归入「离职管理档案」
 */
 let DATA = null;
-let state = { tab: "概述", cat: null, planIdx: 0, sub: "区域汇总", empFilter: "全部", stageKey: null, range: "本月", rFrom: null, rTo: null, gFilter: "全部",
+let state = { tab: "概述", cat: null, planIdx: 0, sub: "全部", empFilter: "全部", stageKey: null, range: "本月", rFrom: null, rTo: null, gFilter: "全部",
   promoSub: "学习地图", promoMapIdx: 0, promoSince: "2026-09-01", evalSub: "新加盟商培训讲师评价",
   pRegion: "全部", pGroup: "全部", pStore: "全部", dStatus: "全部", dGroups: {}, dRegions: {} };
 const PLAN_EXCLUDE = ["测试", "XX", "xx", "课前准备", "174期", "煲饭"];
@@ -209,7 +209,10 @@ function renderCat() {
   let body = "";
   if (state.sub === "区域汇总") body = aggTable(aggregate(p, regionOf), "区域");
   else if (state.sub === "组别汇总") body = aggTable(aggregate(p, groupOf), "组别");
-  else body = storeRankTable(p);
+  else if (state.sub === "门店分数排名及明细") body = storeRankTable(p);
+  else body = `<div style="margin-bottom:22px">${aggTable(aggregate(p, regionOf), "区域")}</div>
+    <div style="margin-bottom:22px">${aggTable(aggregate(p, groupOf), "组别")}</div>
+    ${storeRankTable(p)}`;
 
   el.innerHTML = `
     ${gnav}
@@ -223,7 +226,7 @@ function renderCat() {
     <div class="sec">
       <h3>二级汇总</h3>
       <div class="subtabs">
-        ${["区域汇总", "组别汇总", "门店分数排名及明细"].map(s => `<button class="${state.sub === s ? "active" : ""}" onclick="state.sub='${s}';renderCat()">${s}</button>`).join("")}
+        ${["全部", "区域汇总", "组别汇总", "门店分数排名及明细"].map(s => `<button class="${state.sub === s ? "active" : ""}" onclick="state.sub='${s}';renderCat()">${s}</button>`).join("")}
       </div>
       ${body}
     </div>`;
@@ -242,6 +245,7 @@ function planTasks(p, e) { // 整计划所有阶段任务拍平
   if (!det || !det.stages) return [];
   return det.stages.reduce((a, s) => a.concat(s.t || []), []);
 }
+let aggReopen = null;
 function openAgg(label, nameEnc, keep) {
   const name = decodeURIComponent(nameEnc);
   if (!keep) aggFilter = "全部";
@@ -249,13 +253,22 @@ function openAgg(label, nameEnc, keep) {
   const p = plans[state.planIdx];
   const keyFn = label === "区域" ? regionOf : groupOf;
   let emps = (p.emps || []).filter(e => statusOf(e) != null && keyFn(e) === name);
+  emps = aggFilterEmps(p, emps);
+  aggReopen = () => openAgg(label, nameEnc, true);
+  aggDetailRender(p, emps, (p.planName || "") + " · " + name + " · 学习明细");
+}
+function aggFilterEmps(p, emps) {
   const isDone = e => {
     const st = empStat(p, e);
     if (st) return st.total > 0 && st.done >= st.total;
     return statusOf(e) === 2; // 无明细计划回退平台完成状态
   };
-  if (aggFilter === "已完成") emps = emps.filter(isDone);
-  if (aggFilter === "未完成") emps = emps.filter(e => !isDone(e));
+  if (aggFilter === "已完成") return emps.filter(isDone);
+  if (aggFilter === "未完成") return emps.filter(e => !isDone(e));
+  return emps;
+}
+// 弹窗正文：按天（阶段）一列展示出勤+分数（区域/组别/门店明细共用）
+function aggDetailRender(p, emps, title) {
   // 阶段列表（按计划阶段顺序，去重）；无明细的计划（直播类等）回退完成状态
   const hasDet = p.empDetails && Object.keys(p.empDetails).length > 0;
   const stageNames = [];
@@ -294,22 +307,18 @@ function openAgg(label, nameEnc, keep) {
       if (exams.length) {
         scoreStr = exams.map(t => scoreCell(t, false)).join("/");
       }
-      const learnStr = `<span style="font-size:10px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">课 ${cnt(learn)}</span>`;
-      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:11px;line-height:1.5"><div>${att}</div><div style="white-space:nowrap">${scoreStr}</div><div>${learnStr}</div></td>`;
+      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.6"><div>${att}</div><div style="white-space:nowrap">${scoreStr}</div></td>`;
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
-  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + name + " · 学习明细";
+  document.getElementById("mTitle").textContent = title;
   document.getElementById("mBody").innerHTML = `
     <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
-      ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';openAgg('${label}','${nameEnc}',true)">${f}</button>`).join("")}
+      ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';aggReopen&&aggReopen()">${f}</button>`).join("")}
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${hasDet
-      ? "说明：实操/总进度为整个计划口径；后面按<b>天（阶段）</b>一列展示，格内三行：出勤（已签到/请假/未签到）、分数（当天全部考核，多科 / 隔开，未考红字）、课 x/y（当天必修课完成数，红色=未全部完成）。"
-      : "⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。"}</div>
     ${!hasDet
-      ? `${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
+      ? `<div style="font-size:12px;color:#b45309;background:#fff7e6;border:1px solid #ffe3a3;border-radius:8px;padding:8px 12px;margin-bottom:8px">⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。</div>${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
       : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>实操</th><th>总进度</th>${stageNames.map(sn => `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${esc(sn)}</th>`).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`)}`;
   document.getElementById("mask").classList.add("show");
 }
@@ -475,11 +484,10 @@ function openStore(storeId) {
   const plans = plansInRange(state.cat);
   const p = plans[state.planIdx];
   const st = (p.storeStats || []).find(s => String(s.storeId) === String(storeId));
-  empsCache = (p.emps || []).filter(e => storeOf(e) === (st && st.storeName) && statusOf(e) != null);
-  state.empFilter = "全部";
-  document.getElementById("mTitle").textContent = (st ? st.storeName : "门店") + " · 员工学习明细";
-  renderStoreModal();
-  document.getElementById("mask").classList.add("show");
+  let emps = (p.emps || []).filter(e => storeOf(e) === (st && st.storeName) && statusOf(e) != null);
+  emps = aggFilterEmps(p, emps);
+  aggReopen = () => openStore(storeId);
+  aggDetailRender(p, emps, (st ? st.storeName : "门店") + " · 学习明细");
 }
 function empStatusBadge(stat, e) {
   const [txt, cls] = stat
