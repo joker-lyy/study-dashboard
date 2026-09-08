@@ -214,12 +214,8 @@ function renderCat() {
     <div style="margin-bottom:22px">${aggTable(aggregate(p, groupOf), "组别")}</div>
     ${storeRankTable(p)}
     ${(() => {
-      const dets = (p.storeStats || []).map(s => {
-        const emps = (p.emps || []).filter(e => storeOf(e) === s.storeName && statusOf(e) != null);
-        if (!emps.length) return "";
-        return `<div style="margin-top:26px"><h3 style="margin:0 0 8px;font-size:15px">${esc(s.storeName)} · 学习明细</h3>${aggDetailTable(p, emps)}</div>`;
-      }).join("");
-      return dets ? `<div style="margin-top:10px"><h3>全部门店学习明细</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">以下按门店分数排名顺序，逐店展开学习明细（同「查看明细」格式）</div>${dets}</div>` : "";
+      const emps = (p.emps || []).filter(e => statusOf(e) != null);
+      return emps.length ? `<div style="margin-top:10px"><h3>全体学习明细</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">全部学员一份明细表（门店列可区分所属门店），同「查看明细」格式</div>${aggDetailTable(p, emps)}</div>` : "";
     })()}`;
 
   el.innerHTML = `
