@@ -577,7 +577,12 @@ function renderPromo() {
   const all0 = state.promoSince ? all.filter(e => (e.issueDate || "").slice(0, 10) >= state.promoSince) : all;
   // 区域 / 组别 / 门店 级联导航筛选（作用于下方卡片与两张表）
   const uniqSort = a => [...new Set(a)].sort();
-  const fRegion = all0.filter(e => state.pRegion === "全部" || regionOf(e) === state.pRegion);
+  // 区域口径同新加盟商培训板块：只认组织链路里的「XX区域」，总部部门（招商部/工程/营销组等）不作为区域
+  const promoRegionOf = e => {
+    const segs = orgParts(e).filter(s => s.endsWith("区域"));
+    return segs.length ? segs[segs.length - 1] : null;
+  };
+  const fRegion = all0.filter(e => state.pRegion === "全部" || promoRegionOf(e) === state.pRegion);
   const fGroup = fRegion.filter(e => state.pGroup === "全部" || groupOf(e) === state.pGroup);
   const emps = fGroup.filter(e => state.pStore === "全部" || storeOf(e) === state.pStore);
   const navSel = (label, opts, cur, fn) => `<span style="font-size:13px;color:var(--t2)">${label}</span>
@@ -585,7 +590,7 @@ function renderPromo() {
       ${opts.map(o => `<option value="${esc(o)}" ${cur === o ? "selected" : ""}>${esc(o)}</option>`).join("")}
     </select>`;
   const navBar = `<div class="planbar">
-    ${navSel("区域", ["全部", ...uniqSort(all0.map(regionOf))], state.pRegion, "setPRegion")}
+    ${navSel("区域", ["全部", ...uniqSort(all0.map(promoRegionOf).filter(Boolean))], state.pRegion, "setPRegion")}
     ${navSel("组别", ["全部", ...uniqSort(fRegion.map(groupOf))], state.pGroup, "setPGroup")}
     ${navSel("门店", ["全部", ...uniqSort(fGroup.map(storeOf))], state.pStore, "setPStore")}
     ${(state.pRegion !== "全部" || state.pGroup !== "全部" || state.pStore !== "全部") ? `<button class="btn" style="padding:6px 12px;font-size:12px;background:var(--navy)" onclick="setPRegion('全部');setPGroup('全部');setPStore('全部')">清空筛选</button>` : ""}
