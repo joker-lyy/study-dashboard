@@ -85,16 +85,16 @@ function surveysOf() {
 }
 
 /* ---------- 右上角区间筛选（按计划开始日期 / 评估提交时间） ---------- */
-function monthStart(offset) { // offset 0=本月1日, -1=上月1日
+const fmtLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function monthStart(offset) { // offset 0=本月1日, -1=上月1日（本地时区，不能用 toISOString 的 UTC）
   const n = new Date();
-  return new Date(n.getFullYear(), n.getMonth() + offset, 1).toISOString().slice(0, 10);
+  return fmtLocal(new Date(n.getFullYear(), n.getMonth() + offset, 1));
 }
 function monthRange(offset) { // offset 0=本月, -1=上月
   const n = new Date();
   const y = n.getFullYear(), m = n.getMonth() + offset;
   const from = new Date(y, m, 1), to = new Date(y, m + 1, 0);
-  const f = d => d.toISOString().slice(0, 10);
-  return [f(from), f(to)];
+  return [fmtLocal(from), fmtLocal(to)];
 }
 function dateInrange(dateStr) {
   if (state.range === "全部" || !dateStr) return state.range === "全部";
@@ -572,7 +572,7 @@ function renderPromo() {
   if (!maps.length) { el.innerHTML = `<div class="sec empty">暂无学习地图数据，请先运行 fetch_study.py 更新</div>`; return; }
   state.promoMapIdx = Math.min(state.promoMapIdx, maps.length - 1);
   const mp = maps[state.promoMapIdx];
-  const all = mp.emps || [];
+  const all = (mp.emps || []).filter(e => !((e.storeName || "").includes("测试")));
   // 注册日期筛选（issueDate = 地图发放/注册时间）
   const all0 = state.promoSince ? all.filter(e => (e.issueDate || "").slice(0, 10) >= state.promoSince) : all;
   // 区域 / 组别 / 门店 级联导航筛选（作用于下方卡片与两张表）
