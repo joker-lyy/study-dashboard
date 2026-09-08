@@ -66,12 +66,17 @@ def call(tok, path, body):
     except Exception as e:
         return None, str(e)[:120]
 
-# 「其他」Tab 组别归属：按发布组织映射；培训组(直营组)仅认培训组成员发布
-# （高瑞瑜/黄昭航/潘英化/赖奕毅），门店员工发的剔除
+# 「其他」Tab 组别归属：培训组成员（高瑞瑜/黄昭航/潘英化/赖奕毅）建的任务
+# 一律归「培训组(直营组)」展示（不看发布组织）；门店员工（如陈明来）发的剔除；
+# 其余按发布组织映射组别
 PUB_GROUPS = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"]
 TRAIN_GROUP_CREATORS = {"10000000000108", "10000000000279", "10000000000989", "10000000000991"}
+STORE_EXCLUDE_CREATORS = {"10000000004620"}  # 门店员工，剔除其发布
 
 def pub_group(r):
+    creator = str(r.get("creator"))
+    if creator in TRAIN_GROUP_CREATORS:
+        return "培训组(直营组)"
     org = r.get("organizeNames") or ""
     if "新店运营组" in org:
         g = "新店运营组"
@@ -79,11 +84,9 @@ def pub_group(r):
         g = "加盟营运组"
     elif "新店筹建组" in org:
         g = "新店筹建组"
-    elif "培训组" in org or "直营组" in org:
-        g = "培训组(直营组)"
+    elif ("培训组" in org or "直营组" in org) and creator in STORE_EXCLUDE_CREATORS:
+        return None  # 门店员工借培训组组织发的，剔除
     else:
-        return None
-    if g == "培训组(直营组)" and str(r.get("creator")) not in TRAIN_GROUP_CREATORS:
         return None
     return g
 
