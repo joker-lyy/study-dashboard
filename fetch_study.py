@@ -182,16 +182,23 @@ def fetch_plan_detail(tok, plan):
         if err or not d:
             return None
         stages = []
+        all_t = []
         for s in d.get("trainingStageDetailList", []):
+            ts = [[t.get("taskName"), t.get("taskType"), t.get("taskStatus"),
+                   t.get("score"), t.get("isPass"), t.get("taskFinished")]
+                  for t in s.get("trainingTaskDetailList", [])
+                  if t.get("taskStatus") != "J"]  # J=免修，不计入学习统计
+            all_t += ts
             stages.append({
                 "id": s.get("planStageId"), "n": s.get("stageName"), "s": s.get("stageStatus"),
-                "t": [[t.get("taskName"), t.get("taskType"), t.get("taskStatus"),
-                       t.get("score"), t.get("isPass"), t.get("taskFinished")]
-                      for t in s.get("trainingTaskDetailList", [])],
+                "t": ts,
             })
-        return {"done": d.get("completedTaskNumber"), "total": d.get("taskNumber"),
-                "course": d.get("completedCourseNumber"), "courseN": d.get("courseNumber"),
-                "exam": d.get("completedExamNumber"), "examN": d.get("examNumber"),
+        # 免修任务剔除后按任务明细重算进度（平台的 taskNumber 可能含免修）
+        def _cnt(pred):
+            return sum(1 for t in all_t if pred(t))
+        return {"done": _cnt(lambda t: t[2] == "W"), "total": len(all_t),
+                "course": _cnt(lambda t: t[2] == "W" and t[1] == 3), "courseN": _cnt(lambda t: t[1] == 3),
+                "exam": _cnt(lambda t: t[2] == "W" and t[1] == 4), "examN": _cnt(lambda t: t[1] == 4),
                 "stages": stages}
 
     print(f"  拉取员工明细 x{len(emps)} ...")
