@@ -210,13 +210,10 @@ function renderCat() {
   if (state.sub === "区域汇总") body = aggTable(aggregate(p, regionOf), "区域");
   else if (state.sub === "组别汇总") body = aggTable(aggregate(p, groupOf), "组别");
   else if (state.sub === "门店分数排名及明细") body = storeRankTable(p);
-  else body = `<div style="margin-bottom:22px">${aggTable(aggregate(p, regionOf), "区域")}</div>
-    <div style="margin-bottom:22px">${aggTable(aggregate(p, groupOf), "组别")}</div>
-    ${storeRankTable(p)}
-    ${(() => {
-      const emps = (p.emps || []).filter(e => statusOf(e) != null);
-      return emps.length ? `<div style="margin-top:10px"><h3>全体学习明细</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">全部学员一份明细表（门店列可区分所属门店），同「查看明细」格式</div>${aggDetailTable(p, emps)}</div>` : "";
-    })()}`;
+  else body = (() => {
+    const emps = (p.emps || []).filter(e => statusOf(e) != null);
+    return emps.length ? `<div style="font-size:12px;color:var(--t2);margin-bottom:6px">全体学习明细（门店列可区分所属门店），同「查看明细」格式</div>${aggDetailTable(p, emps)}` : `<div class="empty">暂无学员数据</div>`;
+  })();
 
   el.innerHTML = `
     ${gnav}
