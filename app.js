@@ -942,11 +942,17 @@ function renderOpen() {
 
 /* ---------- 主渲染 ---------- */
 function render() {
-  const tabs = [["概述", ""], ...DATA.categories.map(c => [c, ""]), ["评价管理", ""], ["离职管理档案", ""]];
+  // 隐藏平台上还没有数据的分类（学员/门店全空，如"裂变加盟商培训"配置好后会自动出现）
+  const visibleCats = DATA.categories.filter(c => {
+    const ps = (DATA.plans || []).filter(p => p.category === c);
+    return ps.some(p => (p.emps || []).length > 0 || (p.storeStats || []).length > 0);
+  });
+  const tabs = [["概述", ""], ...visibleCats.map(c => [c, ""]), ["评价管理", ""], ["离职管理档案", ""]];
   document.getElementById("mainTabs").innerHTML = tabs.map(([t]) => {
     const n = t === "概述" || t === "评价管理" || t === "离职管理档案" ? "" : `<span class="n">${plansInRange(t).length}</span>`;
     return `<button class="${state.tab === t ? "active" : ""}" onclick="state.tab='${t}';state.planIdx=0;render()">${t}${n}</button>`;
   }).join("");
+  if (!tabs.some(([t]) => t === state.tab)) { state.tab = "概述"; state.planIdx = 0; }
   if (state.tab === "概述") renderOverview();
   else if (state.tab === "评价管理") renderEval();
   else if (state.tab === "离职管理档案") renderResign();
