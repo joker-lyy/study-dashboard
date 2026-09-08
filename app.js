@@ -8,7 +8,7 @@
 let DATA = null;
 let state = { tab: "概述", cat: null, planIdx: 0, sub: "区域汇总", empFilter: "全部", stageKey: null, range: "全部", rFrom: null, rTo: null,
   promoSub: "学习地图", promoMapIdx: 0, promoSince: "2026-09-01", evalSub: "新加盟商培训讲师评价" };
-const PLAN_EXCLUDE = ["测试", "XX", "xx", "课前准备", "174期"];
+const PLAN_EXCLUDE = ["测试", "XX", "xx", "课前准备", "174期", "煲饭"];
 const SURVEY_RE = /问卷|调查/; // 调查问卷类计划 → 归入 评价管理·课程满意度调研
 const TYPE_NAME = { 3: "学习", 4: "考试", 5: "作业", 7: "表单", 8: "实操" };
 
