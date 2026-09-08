@@ -206,13 +206,15 @@ function renderCat() {
   }).join("");
 
   // 二级
+  const SUBS = state.cat === "线上线下培训" ? ["区域汇总", "组别汇总", "门店分数排名及明细"] : ["全部", "区域汇总", "组别汇总", "门店分数排名及明细"];
+  if (!SUBS.includes(state.sub)) state.sub = SUBS[0];
   let body = "";
   if (state.sub === "区域汇总") body = aggTable(aggregate(p, regionOf), "区域");
   else if (state.sub === "组别汇总") body = aggTable(aggregate(p, groupOf), "组别");
   else if (state.sub === "门店分数排名及明细") body = storeRankTable(p);
   else body = (() => {
     const emps = (p.emps || []).filter(e => statusOf(e) != null);
-    return emps.length ? `<div style="font-size:12px;color:var(--t2);margin-bottom:6px">全体学习明细（门店列可区分所属门店），同「查看明细」格式</div>${state.cat === "线上线下培训" ? flatDetailTable(p, emps) : aggDetailTable(p, emps)}` : `<div class="empty">暂无学员数据</div>`;
+    return emps.length ? `<div style="font-size:12px;color:var(--t2);margin-bottom:6px">全体学习明细（门店列可区分所属门店），同「查看明细」格式</div>${aggDetailTable(p, emps)}` : `<div class="empty">暂无学员数据</div>`;
   })();
 
   el.innerHTML = `
@@ -227,7 +229,7 @@ function renderCat() {
     <div class="sec">
       <h3>二级汇总</h3>
       <div class="subtabs">
-        ${["全部", "区域汇总", "组别汇总", "门店分数排名及明细"].map(s => `<button class="${state.sub === s ? "active" : ""}" onclick="state.sub='${s}';renderCat()">${s}</button>`).join("")}
+        ${SUBS.map(s => `<button class="${state.sub === s ? "active" : ""}" onclick="state.sub='${s}';renderCat()">${s}</button>`).join("")}
       </div>
       ${body}
     </div>`;
@@ -309,7 +311,8 @@ function aggDetailTable(p, emps) {
         // 多科竖排，每科一行，避免横向超出格子
         scoreStr = exams.map(t => scoreCell(t, false)).join("</div><div>");
       }
-      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div></td>`;
+      const learnStr = `<div style="font-size:11px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">必修课 ${cnt(learn)}</div>`;
+      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div>${learnStr}</td>`;
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
