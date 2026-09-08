@@ -47,6 +47,11 @@
     <div class="err" id="errBox"></div>
     <div class="course-chip" id="courseChip" style="display:none"></div>
     <div class="field">
+      <div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>填写门店</div>
+      <div class="d">请填写你所在的门店全名</div></div>
+      <input id="storeIn" placeholder="请输入门店名称" />
+    </div>
+    <div class="field">
       <div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>填写人</div>
       <div class="d">门店店长 / 参训伙伴姓名</div></div>
       <input id="by" placeholder="请输入姓名" />
@@ -93,7 +98,8 @@ const type = qs.get("type") === "sat" ? "sat" : "lecture";
 const isSat = type === "sat";
 document.getElementById("pageTitle").textContent = isSat ? "课程满意度调查" : "新加盟商培训 · 讲师评价";
 document.title = isSat ? "课程满意度调查" : "新加盟商培训 · 讲师评价";
-document.getElementById("storeName").textContent = (store ? "填写门店：" + store : "⚠️ 链接缺少门店参数，请联系培训部重新发送") + (course ? " · " + course : "");
+if (store) document.getElementById("storeIn").value = store;
+document.getElementById("storeName").textContent = (course ? "课程：" + course : "欢迎填写");
 if (isSat) {
   document.getElementById("lectureBody").style.display = "none";
   document.getElementById("satBody").style.display = "block";
@@ -114,7 +120,8 @@ function pickScore(btn, v) {
 function showErr(m) { const b = document.getElementById("errBox"); b.textContent = m; b.style.display = "block"; b.scrollIntoView({behavior:"smooth"}); }
 
 async function submitEval() {
-  if (!store) return showErr("链接缺少门店参数，请联系培训部重新发送");
+  const storeIn = document.getElementById("storeIn").value.trim();
+  if (!storeIn) return showErr("请先填写门店名称");
   const by = document.getElementById("by").value.trim();
   if (!by) return showErr("请先填写姓名");
   let body;
@@ -122,12 +129,12 @@ async function submitEval() {
     const cm = document.getElementById("comment").value.trim();
     if (!score) return showErr("请先选择整体满意度");
     if (cm.length < 10) return showErr("意见与建议不少于10个字，当前 " + cm.length + " 字");
-    body = { game: "course_survey", store: store, time: Date.now(), errors: 0,
+    body = { game: "course_survey", store: storeIn, time: Date.now(), errors: 0,
              name: JSON.stringify({ by: by, course: course, score: score, comment: cm }) };
   } else {
     const parts = ["th","tech","prac"].map(id => ({ id, v: document.getElementById(id).value.trim(), name: {th:"理论培训",tech:"技术培训",prac:"门店实操"}[id] }));
     for (const p of parts) if (p.v.length < 10) return showErr(p.name + "评语不少于10个字，当前 " + p.v.length + " 字");
-    body = { game: "lecture_eval", store: store, time: Date.now(), errors: 0,
+    body = { game: "lecture_eval", store: storeIn, time: Date.now(), errors: 0,
              name: JSON.stringify({ by: by, course: course, th: parts[0].v, tech: parts[1].v, prac: parts[2].v }) };
   }
   const btn = document.getElementById("submitBtn");
@@ -139,7 +146,7 @@ async function submitEval() {
       body: JSON.stringify(body)
     });
     if (!r.ok) throw new Error("HTTP " + r.status);
-    document.getElementById("formWrap").innerHTML = `<div class="done"><div class="ico">✅</div><h2>提交成功</h2><p>感谢「${store}」的反馈！<br>你的评价已送达培训部，将用于改进后续培训。</p></div>`;
+    document.getElementById("formWrap").innerHTML = `<div class="done"><div class="ico">✅</div><h2>提交成功</h2><p>感谢「${storeIn}」的反馈！<br>你的评价已送达培训部，将用于改进后续培训。</p></div>`;
     window.scrollTo(0, 0);
   } catch (e) {
     btn.disabled = false; btn.textContent = "提 交 评 价";

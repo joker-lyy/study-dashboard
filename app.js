@@ -406,15 +406,13 @@ function buildFormLink(params) {
   return baseOrigin() + "eval_form.html?" + params;
 }
 function genLink(kind) { // kind: "lecture" | "survey"
-  const s = document.getElementById("genStore").value.trim();
   const c = document.getElementById("genCourse").value;
   const out = document.getElementById("genOut");
-  if (!s) { out.textContent = "请先输入门店名"; return; }
   if (!c) { out.textContent = "请先选择课程"; return; }
   const isSurvey = kind === "survey";
   const label = isSurvey ? (c + " · 满意度调查") : (c + " · 讲师评价");
-  const link = buildFormLink((isSurvey ? "type=sat&" : "") + "store=" + encodeURIComponent(s) + "&course=" + encodeURIComponent(c));
-  const copyText = `【${label}】\n填写门店：${s}\n填写链接：${link}\n（手机打开即可填写，提交后培训部看板可见）`;
+  const link = buildFormLink((isSurvey ? "type=sat&" : "") + "course=" + encodeURIComponent(c));
+  const copyText = `【${label}】\n填写链接：${link}\n（手机打开即可填写，提交后培训部看板可见）`;
   qrLabel = label;
   lastLink = link;
   out.innerHTML = `
@@ -442,20 +440,14 @@ function storesOfPlanName(planName) {
   if (!stores.length) stores = [...new Set((p.emps || []).map(e => (e.storeNames || "").trim()).filter(Boolean))]; // 直播课无门店统计时从学员列表兜底
   return stores.sort((a, b) => a.localeCompare(b, "zh"));
 }
-function syncStores() {
-  const sel = document.getElementById("genStore");
-  if (!sel) return;
-  const stores = storesOfPlanName(document.getElementById("genCourse").value);
-  sel.innerHTML = stores.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("") || `<option value="">（该课程暂无门店数据）</option>`;
-}
+function syncStores() {} // 门店由填写人在 H5 表单自行填写，链接生成不再绑定门店
 function linkGenHtml(kind, plans) {
   const opts = plans.map((p, i) => `<option value="${esc(p.planName)}">${esc(p.planName)}（${p.startDate || "?"}）</option>`).join("");
   return `<div class="sec">
     <h3>${kind === "survey" ? "满意度调查链接生成（课程嫁接）" : "讲师评价链接生成（课程嫁接）"}</h3>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${kind === "survey" ? "课程取自「线上线下培训」板块计划" : "课程取自「新加盟商培训」板块计划"}，门店自动关联该课程的参训门店；链接与二维码均带课程名称+${kind === "survey" ? "满意度调查" : "讲师评价"}字样</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${kind === "survey" ? "课程取自「线上线下培训」板块计划" : "课程取自「新加盟商培训」板块计划"}，门店由填写人打开链接后自行填写；链接与二维码均带课程名称+${kind === "survey" ? "满意度调查" : "讲师评价"}字样</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-      <select id="genCourse" onchange="syncStores()" style="flex:2;min-width:240px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff">${opts}</select>
-      <select id="genStore" style="flex:1;min-width:160px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff"></select>
+      <select id="genCourse" style="flex:2;min-width:240px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff">${opts}</select>
       <button class="btn" onclick="genLink('${kind}')">生成链接+二维码</button>
     </div>
     <div id="genOut" style="font-size:13px;color:var(--t2);word-break:break-all"></div>
@@ -500,14 +492,37 @@ function renderLectureEval() {
 }
 
 /* 目录二：课程满意度调研（慧运营问卷 + H5满意度提交） */
+const SCORE_NUM = { "很满意": 5, "满意": 4, "一般": 3, "不满意": 2 };
+function lessonNum(s) { // 提取"第X节/讲"的序号（支持中文数字），用于问卷计划与H5提交课程匹配
+  const CN = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10 };
+  const m = (s || "").match(/第([一二三四五六七八九十\d]+)[节讲]/);
+  if (!m) return null;
+  const t = m[1];
+  if (/^\d+$/.test(t)) return String(+t);
+  if (t === "十") return "10";
+  const a = CN[t[0]], b = CN[t[t.length - 1]];
+  return String(t.includes("十") ? (a || 1) * 10 + (b || 0) : a);
+}
+function surveySubs(planName) { // 与该问卷同场次课程的 H5 满意度提交
+  const n = lessonNum(planName);
+  return (DATA.courseSurveys || []).filter(v => n && lessonNum(v.course) === n);
+}
+function surveyAvgScore(planName) {
+  const subs = surveySubs(planName).filter(v => SCORE_NUM[v.score]);
+  if (!subs.length) return null;
+  return subs.reduce((a, v) => a + SCORE_NUM[v.score], 0) / subs.length;
+}
 function renderSurvey() {
   const surveys = surveysInRange();
   const survRows = surveys.map((p, i) => {
     const emps = (p.emps || []).filter(e => statusOf(e) != null);
     const done = emps.filter(e => (empStat(p, e) || {}).status === 2 || e.trainingStatus === 2).length;
-    const rate = emps.length ? done / emps.length * 100 : 0;
+    const avg = surveyAvgScore(p.planName);
+    const subs = surveySubs(p.planName);
     return `<tr class="clickable" onclick="openSurvey(${i})">
-      <td>${esc(p.planName)}</td><td>${p.startDate || "-"}</td><td>${emps.length}</td><td>${done}</td><td>${barHtml(rate)}</td></tr>`;
+      <td>${esc(p.planName)}</td><td>${p.startDate || "-"}</td><td>${done}</td>
+      <td>${avg != null ? `<span class="badge b-green">${avg.toFixed(1)} 分</span><span style="color:var(--t2);font-size:12px">（${subs.length}条）</span>` : `<span style="color:var(--t2)">—</span>`}</td>
+      <td onclick="event.stopPropagation()">${subs.length ? `<button class="btn" style="padding:5px 12px;font-size:12px" onclick="openAdvice(${i})">查看建议${subs.filter(v => (v.comment || "").trim()).length ? `（${subs.filter(v => (v.comment || "").trim()).length}）` : ""}</button>` : `<span style="color:var(--t2);font-size:12px">暂无</span>`}</td></tr>`;
   }).join("") || `<tr><td colspan="5" class="empty">暂无调查问卷计划</td></tr>`;
 
   const allSub = DATA.courseSurveys || [];
@@ -523,29 +538,47 @@ function renderSurvey() {
   document.getElementById("evalBody").innerHTML = `
     <div class="sec">
       <h3>课程满意度 · 慧运营调查问卷</h3>
-      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">来自「线上线下培训」的调查问卷类计划（已从培训统计中移入本板块），点击行查看答题明细</div>
-      <table><tr><th>问卷计划</th><th>日期</th><th>应答人数</th><th>已完成</th><th>完成率</th></tr>${survRows}</table>
+      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">来自「线上线下培训」的调查问卷类计划（已从培训统计中移入本板块），点击行查看答题明细；评分取自该场次课程 H5 满意度提交</div>
+      <table><tr><th>问卷计划</th><th>日期</th><th>已完成</th><th>评分</th><th>查看建议</th></tr>${survRows}</table>
     </div>
     ${linkGenHtml("survey", onlinePlans)}
     <div class="sec">
       <h3>门店提交的满意度（H5）</h3>
       <table><tr><th>门店</th><th>课程</th><th>满意度</th><th>意见与建议</th><th>提交时间</th></tr>${subRows}</table>
     </div>`;
-  syncStores();
 }
 function surveysInRange() { return surveysOf().filter(p => dateInrange(p.startDate)); }
-function openSurvey(idx) {
+let surveyFilter = "全部";
+function openSurvey(idx, keepFilter) {
   const p = surveysInRange()[idx];
+  if (!keepFilter) surveyFilter = "全部";
   document.getElementById("mTitle").textContent = p.planName + " · 答题明细";
-  const rows = (p.emps || []).filter(e => statusOf(e) != null).map(e => {
+  let emps = (p.emps || []).filter(e => statusOf(e) != null).map(e => {
     const stat = empStat(p, e);
     const ok = (stat && stat.status === 2) || e.trainingStatus === 2;
-    return `<tr><td>${esc(e.empName)}</td><td>${esc(storeOf(e))}</td>
-      <td><span class="badge ${ok ? "b-green" : "b-orange"}">${ok ? "已完成" : "未完成"}</span>${stat ? `<span style="color:var(--t2);font-size:12px"> ${stat.done}/${stat.total}</span>` : ""}</td></tr>`;
-  }).join("");
-  document.getElementById("mBody").innerHTML = rows
-    ? `<table><tr><th>姓名</th><th>门店</th><th>答题状态</th></tr>${rows}</table>`
-    : `<div class="empty">该问卷无在职人员数据</div>`;
+    return { e, stat, ok };
+  });
+  if (surveyFilter !== "全部") emps = emps.filter(x => surveyFilter === "已完成" ? x.ok : !x.ok);
+  const doneAll = (p.emps || []).filter(e => statusOf(e) != null && ((empStat(p, e) || {}).status === 2 || e.trainingStatus === 2)).length;
+  const rows = emps.map(({ e, stat, ok }) => `<tr><td>${esc(e.empName)}</td><td>${esc(storeOf(e))}</td>
+      <td><span class="badge ${ok ? "b-green" : "b-orange"}">${ok ? "已完成" : "未完成"}</span>${stat ? `<span style="color:var(--t2);font-size:12px"> ${stat.done}/${stat.total}</span>` : ""}</td></tr>`).join("");
+  document.getElementById("mBody").innerHTML = `
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${surveyFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="surveyFilter='${f}';openSurvey(${idx},true)">${f}</button>`).join("")}
+      <span style="margin-left:auto;font-size:12px;color:var(--t2);align-self:center">共 ${(p.emps || []).filter(e => statusOf(e) != null).length} 人 · 已完成 ${doneAll} 人</span>
+    </div>
+    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>答题状态</th></tr>${rows}</table>` : `<div class="empty">该筛选条件下无人员</div>`}`;
+  document.getElementById("mask").classList.add("show");
+}
+function openAdvice(idx) {
+  const p = surveysInRange()[idx];
+  const subs = surveySubs(p.planName).filter(v => (v.comment || "").trim());
+  document.getElementById("mTitle").textContent = p.planName + " · 门店建议";
+  document.getElementById("mBody").innerHTML = subs.length ? subs.map(v => `
+    <div class="eval-card">
+      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">${esc(v.store)} · ${esc(v.score || "-")} · ${new Date(v.time).toLocaleString("zh-CN")} · ${esc(v.by) || "-"}</div>
+      <div style="font-size:14px;line-height:1.7;white-space:normal">${esc(v.comment)}</div>
+    </div>`).join("") : `<div class="empty">该问卷对应课程暂无文字建议</div>`;
   document.getElementById("mask").classList.add("show");
 }
 
