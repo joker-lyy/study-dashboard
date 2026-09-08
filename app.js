@@ -405,14 +405,19 @@ function baseOrigin() {
 function buildFormLink(params) {
   return baseOrigin() + "eval_form.html?" + params;
 }
-function genLink(kind) { // kind: "lecture" | "survey"
+function genLink(kind) { // kind: "lecture"（老师评价门店，需选门店） | "survey"（门店填，无需选门店）
   const c = document.getElementById("genCourse").value;
   const out = document.getElementById("genOut");
   if (!c) { out.textContent = "请先选择课程"; return; }
   const isSurvey = kind === "survey";
+  let s = "";
+  if (!isSurvey) {
+    s = document.getElementById("genStore").value.trim();
+    if (!s) { out.textContent = "请先选择门店"; return; }
+  }
   const label = isSurvey ? (c + " · 满意度调查") : (c + " · 讲师评价");
-  const link = buildFormLink((isSurvey ? "type=sat&" : "") + "course=" + encodeURIComponent(c));
-  const copyText = `【${label}】\n填写链接：${link}\n（手机打开即可填写，提交后培训部看板可见）`;
+  const link = buildFormLink((isSurvey ? "type=sat&" : "type=lecture&") + (s ? "store=" + encodeURIComponent(s) + "&" : "") + "course=" + encodeURIComponent(c));
+  const copyText = `【${label}】\n${s ? "评价门店：" + s + "\n" : ""}填写链接：${link}\n（手机打开即可填写，提交后培训部看板可见）`;
   qrLabel = label;
   lastLink = link;
   out.innerHTML = `
@@ -440,14 +445,22 @@ function storesOfPlanName(planName) {
   if (!stores.length) stores = [...new Set((p.emps || []).map(e => (e.storeNames || "").trim()).filter(Boolean))]; // 直播课无门店统计时从学员列表兜底
   return stores.sort((a, b) => a.localeCompare(b, "zh"));
 }
-function syncStores() {} // 门店由填写人在 H5 表单自行填写，链接生成不再绑定门店
+function syncStores() { // 讲师评价链接：门店下拉自动关联该课程参训门店
+  const sel = document.getElementById("genStore");
+  if (!sel) return;
+  const stores = storesOfPlanName(document.getElementById("genCourse").value);
+  sel.innerHTML = stores.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("") || `<option value="">（该课程暂无门店数据）</option>`;
+}
 function linkGenHtml(kind, plans) {
   const opts = plans.map((p, i) => `<option value="${esc(p.planName)}">${esc(p.planName)}（${p.startDate || "?"}）</option>`).join("");
+  const storeSel = kind === "survey" ? "" :
+    `<select id="genStore" onchange="" style="flex:1;min-width:160px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff"></select>`;
   return `<div class="sec">
     <h3>${kind === "survey" ? "满意度调查链接生成（课程嫁接）" : "讲师评价链接生成（课程嫁接）"}</h3>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${kind === "survey" ? "课程取自「线上线下培训」板块计划" : "课程取自「新加盟商培训」板块计划"}，门店由填写人打开链接后自行填写；链接与二维码均带课程名称+${kind === "survey" ? "满意度调查" : "讲师评价"}字样</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${kind === "survey" ? "课程取自「线上线下培训」板块计划，门店由填写人打开链接后自行填写" : "课程取自「新加盟商培训」板块计划，门店自动关联参训门店；链接发给<strong>授课老师</strong>，由老师评价对应门店，理论/技术/实操由老师勾选后填写"}；链接与二维码均带课程名称+${kind === "survey" ? "满意度调查" : "讲师评价"}字样</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-      <select id="genCourse" style="flex:2;min-width:240px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff">${opts}</select>
+      <select id="genCourse" ${kind === "survey" ? "" : `onchange="syncStores()"`} style="flex:2;min-width:240px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff">${opts}</select>
+      ${storeSel}
       <button class="btn" onclick="genLink('${kind}')">生成链接+二维码</button>
     </div>
     <div id="genOut" style="font-size:13px;color:var(--t2);word-break:break-all"></div>
@@ -461,19 +474,19 @@ function renderLectureEval() {
   const byStore = {};
   evals.forEach(v => { (byStore[v.store] = byStore[v.store] || []).push(v); });
   const stores = Object.keys(byStore);
-  const modBadge = (label, txt) => `<div class="mod-line"><span class="badge b-blue">${label}</span><span class="mod-txt">${esc(txt) || '<i style="color:var(--t2)">（空）</i>'}</span></div>`;
+  const modBadge = (label, txt) => txt ? `<div class="mod-line"><span class="badge b-blue">${label}</span><span class="mod-txt">${esc(txt)}</span></div>` : "";
   const rows = stores.map(s => {
     const list = byStore[s];
     return `<tr><td style="vertical-align:top"><b>${esc(s)}</b></td><td>${list.map(v => `
       <div class="eval-card">
-        <div style="font-size:12px;color:var(--t2);margin-bottom:6px">${new Date(v.time).toLocaleString("zh-CN")} · 填写人：${esc(v.by) || "-"}${v.course ? ` · 课程：${esc(v.course)}` : ""}</div>
-        ${modBadge("理论", v.th)}${modBadge("技术", v.tech)}${modBadge("实操", v.prac)}
+        <div style="font-size:12px;color:var(--t2);margin-bottom:6px">${new Date(v.time).toLocaleString("zh-CN")} · 授课老师：${esc(v.by) || "-"}${v.course ? ` · 课程：${esc(v.course)}` : ""}</div>
+        ${modBadge("理论", v.th)}${modBadge("技术", v.tech)}${modBadge("实操", v.prac) || (!v.th && !v.tech && !v.prac ? '<i style="color:var(--t2);font-size:12px">（无文字评价）</i>' : "")}
       </div>`).join("")}</td></tr>`;
-  }).join("") || `<tr><td class="empty" colspan="2">暂无门店提交评价</td></tr>`;
+  }).join("") || `<tr><td class="empty" colspan="2">暂无授课老师提交评价</td></tr>`;
   const lecturePlans = plansOf("新加盟商培训");
   document.getElementById("evalBody").innerHTML = `
     <div class="sec">
-      <h3>讲师评价（新加盟商培训）</h3>
+      <h3>讲师评价（新加盟商培训 · 授课老师评门店）</h3>
       <div class="cards">
         <div class="card"><div class="k">已收评价门店</div><div class="v">${stores.length}</div></div>
         <div class="card"><div class="k">评价总数</div><div class="v">${evals.length}</div></div>
@@ -481,7 +494,7 @@ function renderLectureEval() {
         <div class="card"><div class="k">技术评语</div><div class="v">${evals.filter(v => v.tech).length}</div></div>
         <div class="card"><div class="k">实操评语</div><div class="v">${evals.filter(v => v.prac).length}</div></div>
       </div>
-      <div class="note" style="font-size:12px;color:var(--t2)">评价数据由门店通过 H5 链接提交，跑一次 fetch_study.py 后在此更新；右上角区间筛选同时生效。</div>
+      <div class="note" style="font-size:12px;color:var(--t2)">评价由授课老师通过 H5 链接提交（按门店自动整合），跑一次 fetch_study.py 后在此更新；右上角区间筛选同时生效。</div>
     </div>
     ${linkGenHtml("lecture", lecturePlans)}
     <div class="sec">

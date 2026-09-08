@@ -46,31 +46,32 @@
   <div class="wrap" id="formWrap">
     <div class="err" id="errBox"></div>
     <div class="course-chip" id="courseChip" style="display:none"></div>
+    <div id="storeBox"></div>
     <div class="field">
-      <div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>填写门店</div>
-      <div class="d">请填写你所在的门店全名</div></div>
-      <input id="storeIn" placeholder="请输入门店名称" />
-    </div>
-    <div class="field">
-      <div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>填写人</div>
-      <div class="d">门店店长 / 参训伙伴姓名</div></div>
+      <div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>授课老师</div>
+      <div class="d">请填写授课老师姓名</div></div>
       <input id="by" placeholder="请输入姓名" />
     </div>
     <div id="lectureBody">
       <div class="mod">
-        <div class="t"><i></i>理论培训评语</div>
-        <div class="d">讲师授课清晰度、内容实用性、课堂氛围、答疑情况等</div>
-        <textarea id="th" placeholder="请输入理论培训评语（不少于10个字）"></textarea>
+        <div class="t"><i></i>授课板块（勾选你授课的部分）</div>
+        <div class="d">同一课程各板块授课老师可能不同，请勾选你负责授课的板块后填写对应评价</div>
+        <div class="opts" id="partOpts"></div>
       </div>
-      <div class="mod">
-        <div class="t"><i></i>技术培训评语</div>
-        <div class="d">手法示范、练习辅导、考核把关、进度安排等</div>
-        <textarea id="tech" placeholder="请输入技术培训评语（不少于10个字）"></textarea>
+      <div class="mod" id="modTh" style="display:none">
+        <div class="t"><i></i>理论培训评价</div>
+        <div class="d">评价该门店伙伴理论学习情况：课堂状态、知识掌握、理论考核表现等</div>
+        <textarea id="th" placeholder="请输入理论培训评价（不少于10个字）"></textarea>
       </div>
-      <div class="mod">
-        <div class="t"><i></i>门店实操评语</div>
-        <div class="d">回店后上手情况、落地指导、跟踪支持等</div>
-        <textarea id="prac" placeholder="请输入门店实操评语（不少于10个字）"></textarea>
+      <div class="mod" id="modTech" style="display:none">
+        <div class="t"><i></i>技术培训评价</div>
+        <div class="d">评价该门店伙伴技术学习情况：手法练习、掌握速度、考核表现等</div>
+        <textarea id="tech" placeholder="请输入技术培训评价（不少于10个字）"></textarea>
+      </div>
+      <div class="mod" id="modPrac" style="display:none">
+        <div class="t"><i></i>门店实操评价</div>
+        <div class="d">评价该门店伙伴实操情况：上手程度、独立出品能力、落地表现等</div>
+        <textarea id="prac" placeholder="请输入门店实操评价（不少于10个字）"></textarea>
       </div>
     </div>
     <div id="satBody" style="display:none">
@@ -96,17 +97,40 @@ const store = (qs.get("store") || "").trim();
 const course = (qs.get("course") || "").trim();
 const type = qs.get("type") === "sat" ? "sat" : "lecture";
 const isSat = type === "sat";
-document.getElementById("pageTitle").textContent = isSat ? "课程满意度调查" : "新加盟商培训 · 讲师评价";
-document.title = isSat ? "课程满意度调查" : "新加盟商培训 · 讲师评价";
-if (store) document.getElementById("storeIn").value = store;
+document.getElementById("pageTitle").textContent = isSat ? "课程满意度调查" : "培训评价 · 授课老师评门店";
+document.title = isSat ? "课程满意度调查" : "培训评价 · 授课老师评门店";
+document.getElementById("headSub").textContent = isSat
+  ? "以门店为单位填写，请结合本次课程真实感受，评价将用于改进培训质量"
+  : "由授课老师填写，评价所带门店伙伴的学习情况，评价将用于改进培训质量";
+// 门店区块：讲师评价若链接带门店则锁定显示「评价门店：xxx」；满意度则由填写人自填
+const storeBox = document.getElementById("storeBox");
+if (isSat) {
+  storeBox.innerHTML = `<div class="field"><div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>填写门店</div>
+    <div class="d">请填写你所在的门店全名</div></div><input id="storeIn" placeholder="请输入门店名称" value="${store}" /></div>`;
+} else if (store) {
+  storeBox.innerHTML = `<div class="course-chip">评价门店：<b>${store}</b></div>`;
+} else {
+  storeBox.innerHTML = `<div class="field"><div class="mod" style="padding:0;margin:0;box-shadow:none"><div class="t"><i></i>评价门店</div>
+    <div class="d">请填写你要评价的门店全名</div></div><input id="storeIn" placeholder="请输入门店名称" /></div>`;
+}
 document.getElementById("storeName").textContent = (course ? "课程：" + course : "欢迎填写");
 if (isSat) {
   document.getElementById("lectureBody").style.display = "none";
   document.getElementById("satBody").style.display = "block";
-} else if (course) {
-  const chip = document.getElementById("courseChip");
-  chip.style.display = "block";
-  chip.textContent = "关联课程：" + course;
+} else {
+  if (course) {
+    const chip = document.getElementById("courseChip");
+    chip.style.display = "block";
+    chip.textContent = "关联课程：" + course;
+  }
+  // 授课板块勾选
+  const PARTS = [["th", "理论培训"], ["tech", "技术培训"], ["prac", "门店实操"]];
+  document.getElementById("partOpts").innerHTML = PARTS.map(([id, n]) => `<button data-p="${id}" onclick="togglePart(this,'${id}')">${n}</button>`).join("");
+}
+const pickedParts = new Set();
+function togglePart(btn, id) {
+  if (pickedParts.has(id)) { pickedParts.delete(id); btn.classList.remove("on"); document.getElementById("mod" + id.charAt(0).toUpperCase() + id.slice(1)).style.display = "none"; }
+  else { pickedParts.add(id); btn.classList.add("on"); document.getElementById("mod" + id.charAt(0).toUpperCase() + id.slice(1)).style.display = "block"; }
 }
 let score = "";
 const SCORES = ["很满意", "满意", "一般", "不满意"];
@@ -120,10 +144,10 @@ function pickScore(btn, v) {
 function showErr(m) { const b = document.getElementById("errBox"); b.textContent = m; b.style.display = "block"; b.scrollIntoView({behavior:"smooth"}); }
 
 async function submitEval() {
-  const storeIn = document.getElementById("storeIn").value.trim();
-  if (!storeIn) return showErr("请先填写门店名称");
+  const storeIn = document.getElementById("storeIn") ? document.getElementById("storeIn").value.trim() : store;
+  if (!storeIn) return showErr(isSat ? "请先填写门店名称" : "请先填写评价门店名称");
   const by = document.getElementById("by").value.trim();
-  if (!by) return showErr("请先填写姓名");
+  if (!by) return showErr(isSat ? "请先填写姓名" : "请先填写授课老师姓名");
   let body;
   if (isSat) {
     const cm = document.getElementById("comment").value.trim();
@@ -132,10 +156,17 @@ async function submitEval() {
     body = { game: "course_survey", store: storeIn, time: Date.now(), errors: 0,
              name: JSON.stringify({ by: by, course: course, score: score, comment: cm }) };
   } else {
-    const parts = ["th","tech","prac"].map(id => ({ id, v: document.getElementById(id).value.trim(), name: {th:"理论培训",tech:"技术培训",prac:"门店实操"}[id] }));
-    for (const p of parts) if (p.v.length < 10) return showErr(p.name + "评语不少于10个字，当前 " + p.v.length + " 字");
-    body = { game: "lecture_eval", store: storeIn, time: Date.now(), errors: 0,
-             name: JSON.stringify({ by: by, course: course, th: parts[0].v, tech: parts[1].v, prac: parts[2].v }) };
+    if (!pickedParts.size) return showErr("请先勾选你授课的板块");
+    const NAME = { th: "理论培训", tech: "技术培训", prac: "门店实操" };
+    const detail = { by: by, course: course, parts: [...pickedParts] };
+    for (const id of ["th", "tech", "prac"]) {
+      const v = document.getElementById(id).value.trim();
+      if (pickedParts.has(id)) {
+        if (v.length < 10) return showErr(NAME[id] + "评价不少于10个字，当前 " + v.length + " 字");
+        detail[id] = v;
+      }
+    }
+    body = { game: "lecture_eval", store: storeIn, time: Date.now(), errors: 0, name: JSON.stringify(detail) };
   }
   const btn = document.getElementById("submitBtn");
   btn.disabled = true; btn.textContent = "提交中…";
@@ -146,7 +177,7 @@ async function submitEval() {
       body: JSON.stringify(body)
     });
     if (!r.ok) throw new Error("HTTP " + r.status);
-    document.getElementById("formWrap").innerHTML = `<div class="done"><div class="ico">✅</div><h2>提交成功</h2><p>感谢「${storeIn}」的反馈！<br>你的评价已送达培训部，将用于改进后续培训。</p></div>`;
+    document.getElementById("formWrap").innerHTML = `<div class="done"><div class="ico">✅</div><h2>提交成功</h2><p>对「${storeIn}」的评价已送达培训部，<br>将用于改进后续培训。</p></div>`;
     window.scrollTo(0, 0);
   } catch (e) {
     btn.disabled = false; btn.textContent = "提 交 评 价";
