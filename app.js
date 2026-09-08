@@ -8,7 +8,7 @@
 let DATA = null;
 let state = { tab: "概述", cat: null, planIdx: 0, sub: "区域汇总", empFilter: "全部", stageKey: null, range: "本月", rFrom: null, rTo: null, gFilter: "全部",
   promoSub: "学习地图", promoMapIdx: 0, promoSince: "2026-09-01", evalSub: "新加盟商培训讲师评价",
-  pRegion: "全部", pGroup: "全部", pStore: "全部" };
+  pRegion: "全部", pGroup: "全部", pStore: "全部", dStatus: "全部", dGroups: {}, dRegions: {} };
 const PLAN_EXCLUDE = ["测试", "XX", "xx", "课前准备", "174期", "煲饭"];
 const SURVEY_RE = /问卷|调查/; // 调查问卷类计划 → 归入 评价管理·课程满意度调研
 const TYPE_NAME = { 3: "学习", 4: "考试", 5: "作业", 7: "表单", 8: "实操" };
@@ -34,6 +34,7 @@ function orgParts(emp) {
 function regionOf(emp) { const p = orgParts(emp); return p[p.length - 1] || "未分配"; }
 function groupOf(emp) { const p = orgParts(emp); return p.length >= 2 ? p[p.length - 2] : "未分配"; }
 function storeOf(emp) { return emp.storeNames || "无门店"; }
+function uniqSort(a) { return [...new Set(a)].sort(); }
 
 function statusOf(emp) {
   if (emp.empStatus && emp.empStatus !== "zc") return null; // 不在职不显示
@@ -251,31 +252,91 @@ function taskBadge(t) {
   return `<span class="badge ${cls}" style="margin:2px 4px 2px 0">${esc(name)}（${label}）${ok ? "已完成" : "未完成"}${extra}</span>`;
 }
 function openStage(stageName) {
+  state.stageKey = stageName;
+  renderStageModal();
+  document.getElementById("mask").classList.add("show");
+}
+// 学员组别/区域（从组织链路取四组+区域）
+function mGroup(e) {
+  const chains = (e.organizeNames || "").split("、");
+  for (const ch of chains) {
+    const parts = ch.split("/").map(x => x.trim()).filter(Boolean);
+    for (let i = 0; i < parts.length; i++) {
+      const g = parts[i];
+      if (g.includes("培训组")) return { g: "培训组(直营组)", r: parts[i + 1] || "-" };
+      if (g === "新店运营组" || g === "加盟营运组") return { g, r: parts[i + 1] || "-" };
+      if (g.includes("筹建组")) return { g: "新店筹建组", r: parts[i + 1] || "-" };
+    }
+  }
+  return { g: "其他", r: regionOf(e) || "-" };
+}
+function toggleDFilter(kind, val, cb) {
+  const set = state["d" + kind];
+  if (cb.checked) set[val] = 1; else delete set[val];
+  renderStageModal();
+}
+function setDStatus(v) { state.dStatus = v; renderStageModal(); }
+function renderStageModal() {
+  const stageName = state.stageKey;
   const plans = plansInRange(state.cat);
   const p = plans[state.planIdx];
-  document.getElementById("mTitle").textContent = stageName + " · 学员学习明细";
-  const rows = (p.emps || []).filter(e => statusOf(e) != null).map(e => {
+  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + stageName + " · 学习明细";
+  let emps = (p.emps || []).filter(e => statusOf(e) != null);
+  const allGroups = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
+  const gset = state.dGroups, rset = state.dRegions;
+  if (gset && Object.keys(gset).length) emps = emps.filter(e => gset[mGroup(e).g]);
+  if (rset && Object.keys(rset).length) emps = emps.filter(e => rset[mGroup(e).r]);
+  // 已完成/未完成
+  const isDone = e => { const st = empStat(p, e); return st && st.total > 0 && st.done >= st.total; };
+  if (state.dStatus === "已完成") emps = emps.filter(isDone);
+  if (state.dStatus === "未完成") emps = emps.filter(e => !isDone(e));
+  const regions = uniqSort(emps.map(e => mGroup(e).r));
+  const boxes = (kind, set, opts) => opts.map(o => `<label style="margin:0 10px 0 0;white-space:nowrap;cursor:pointer"><input type="checkbox" ${set[o] ? "checked" : ""} onclick="toggleDFilter('${kind}','${esc(o)}',this)" style="vertical-align:-2px"> ${esc(o)}</label>`).join("");
+  const rows = emps.map(e => {
     const det = p.empDetails && p.empDetails[String(e.employeeId)];
     const stage = det && (det.stages || []).find(s => (s.n || "") === stageName);
     const ts = stage ? stage.t : [];
     const learn = ts.filter(t => t[1] === 3), exams = ts.filter(t => t[1] === 4), ops = ts.filter(t => [5, 7, 8].includes(t[1]));
     const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
     const scores = exams.map(t => +t[3]).filter(x => !isNaN(x));
-    const avg = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(0) : "-";
+    const scoreStr = scores.length ? scores.join("/") : "-";
     const stat = empStat(p, e);
+    const mg = mGroup(e);
+    // 任务明细：不重复课题名，只列内容完成情况
+    const detail = ts.map(t => {
+      const [name, type, st, score, isPass] = t;
+      const ok = st === "W";
+      const label = TYPE_NAME[type] || "任务";
+      let extra = "";
+      if (type === 4) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
+      return `<span class="badge ${ok ? "b-green" : "b-orange"}" style="margin:2px 4px 2px 0">${label}${ok ? "✓" : "✗"}${extra}</span>`;
+    }).join("") || `<span class="badge b-gray">无任务数据</span>`;
     return `<tr>
       <td>${esc(e.empName)}</td>
+      <td style="max-width:130px">${esc(storeOf(e))}</td>
       <td>${cnt(learn)}</td>
-      <td>${cnt(exams)}<span style="color:var(--t2);font-size:12px"> 均分${avg}</span></td>
+      <td>${scoreStr}</td>
       <td>${cnt(ops)}</td>
       <td>${stat ? `${stat.done}/${stat.total}` : "-"}</td>
-      <td>${ts.map(taskBadge).join("") || `<span class="badge b-gray">无任务数据</span>`}</td>
+      <td>${detail}</td>
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：计划内任务均为必修（必须完成）；学习=课程内容，考试含分数与通过状态，作业/表单/实操归为实操类。平台未设选修任务。</div>
-    ${rows ? `<table><tr><th>姓名</th><th>学习</th><th>考试</th><th>实操</th><th>总进度</th><th>任务明细</th></tr>${rows}</table>` : `<div class="empty">该阶段无在职学员数据</div>`}`;
-  document.getElementById("mask").classList.add("show");
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：学习/考试/实操为该阶段已完成/应完成；考试多个分数以 / 隔开；总进度=整个计划已完成/应完成。</div>
+    <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
+      <b>组别：</b>${boxes("Groups", gset, allGroups)}
+    </div>
+    <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
+      <b>区域：</b>${boxes("Regions", rset, regions)}
+    </div>
+    <div style="margin-bottom:8px;font-size:13px">
+      <b>完成状态：</b>
+      <select onchange="setDStatus(this.value)">
+        ${["全部", "已完成", "未完成"].map(o => `<option value="${o}" ${state.dStatus === o ? "selected" : ""}>${o}</option>`).join("")}
+      </select>
+      <span style="color:var(--t2);margin-left:8px">共 ${emps.length} 人</span>
+    </div>
+    ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>学习</th><th>考试分数</th><th>实操</th><th>总进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
 }
 
 /* ---------- 门店明细弹窗 ---------- */
