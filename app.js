@@ -596,33 +596,61 @@ function openAdvice(idx) {
 }
 
 /* ---------- 离职管理档案（离职员工不参与任何统计） ---------- */
-function renderResign() {
-  const seen = {}, rows = [];
+function resignedLearnMap() { // employeeId -> [{name, done, total, pct, kind}]
+  const m = {};
+  const add = (id, name, done, total, kind) => {
+    if (done == null || total == null || !total) return;
+    (m[id] = m[id] || []).push({ name, done, total, pct: Math.round(done / total * 1000) / 10, kind });
+  };
   (DATA.plans || []).forEach(p => (p.emps || []).forEach(e => {
-    if (!e.empStatus || e.empStatus === "zc") return; // 只收离职
-    const k = e.employeeId;
-    const stat = empStat(p, e);
-    if (seen[k]) { seen[k].plans.push(p.planName); return; }
-    seen[k] = { e, stat, plans: [p.planName] };
-    rows.push(seen[k]);
+    const d = (p.empDetails || {})[String(e.employeeId)];
+    add(e.employeeId, p.planName, d && d.done, d && d.total, "计划");
   }));
-  (DATA.maps || []).forEach(mp => (mp.emps || []).forEach(e => {
-    if (e.empStatus && e.empStatus !== "zc" && !seen[e.employeeId]) {
-      seen[e.employeeId] = { e, stat: null, plans: [mp.mapName + "（学习地图）"] };
-      rows.push(seen[e.employeeId]);
-    }
-  }));
-  const body = rows.map(r => `<tr>
-      <td>${esc(r.e.empName)}</td><td>${esc(r.e.empCode || "")}</td><td>${esc(r.e.positionName || "")}</td>
-      <td>${esc(storeOf(r.e))}</td><td style="color:var(--t2)">${esc(regionOf(r.e))}</td>
-      <td style="white-space:normal;color:var(--t2)">${esc(r.plans.join("、"))}</td>
-      <td>${r.stat ? `<span class="badge b-gray">档案进度 ${r.stat.done}/${r.stat.total}</span>` : `<span class="badge b-gray">-`}</span></td>
-    </tr>`).join("") || `<tr><td colspan="7" class="empty">当前数据中无离职员工</td></tr>`;
+  (DATA.maps || []).forEach(mp => (mp.emps || []).forEach(e =>
+    add(e.employeeId, mp.mapName, Number(e.completionSchedule), 100, "地图")));
+  return m;
+}
+function renderResign() {
+  const roster = DATA.resigned || [];
+  // 兼容旧数据：花名册缺失时回退从计划/地图学员行提取离职员工
+  if (!roster.length) {
+    const seen = {};
+    (DATA.plans || []).forEach(p => (p.emps || []).forEach(e => { if (e.empStatus && e.empStatus !== "zc") seen[e.employeeId] = { employeeName: e.empName, employeeCode: e.empCode, positionName: e.positionName, store: storeOf(e), region: regionOf(e), departureDate: "" }; }));
+    (DATA.maps || []).forEach(mp => (mp.emps || []).forEach(e => { if (e.empStatus && e.empStatus !== "zc" && !seen[e.employeeId]) seen[e.employeeId] = { employeeName: e.employeeName, employeeCode: e.employeeCode, positionName: e.positionName, store: e.storeName, region: e.organizeName, departureDate: "" }; }));
+    roster.push(...Object.entries(seen).map(([id, v]) => ({ employeeId: id, ...v })));
+  }
+  const learn = resignedLearnMap();
+  // 学习项下拉（全部 / 各计划 / 各地图）
+  const items = [];
+  (DATA.plans || []).forEach(p => { if ((p.emps || []).length) items.push(p.planName); });
+  (DATA.maps || []).forEach(mp => items.push("【地图】" + mp.mapName));
+  const sel = state.resignItem || "全部";
+  const rows = roster.map(r => {
+    const ls = learn[r.employeeId] || [];
+    const shown = sel === "全部" ? ls : ls.filter(l => sel === "【地图】" + l.name || l.name === sel);
+    const learnHtml = shown.length
+      ? shown.map(l => `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+          <span style="font-size:12px;color:var(--t2);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(l.name)}">${esc(l.name)}</span>
+          ${barHtml(l.pct)}<span style="font-size:12px;color:var(--t2)">${l.done}/${l.total}</span></div>`).join("")
+      : `<span style="color:var(--t2);font-size:12px">—</span>`;
+    return `<tr>
+      <td>${esc(r.store) || "-"}</td><td><b>${esc(r.employeeName)}</b></td><td>${esc(r.positionName) || "-"}</td>
+      <td style="color:var(--t2);font-size:12px">${esc(r.region) || "-"}</td>
+      <td style="white-space:normal;min-width:240px">${learnHtml}</td>
+      <td>${r.departureDate || "-"}</td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="empty">当前数据中无离职员工</td></tr>`;
   document.getElementById("main").innerHTML = `
     <div class="sec">
       <h3>离职管理档案</h3>
-      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">离职员工（${rows.length} 人）单独归档，<b>不参与看板任何统计口径</b>；其历史学习记录保留在此备查</div>
-      <table><tr><th>姓名</th><th>工号</th><th>职位</th><th>门店</th><th>区域</th><th>涉及计划/地图</th><th>档案进度</th></tr>${body}</table>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;color:var(--t2)">学习项筛选</span>
+        <select onchange="state.resignItem=this.value;renderResign()" style="padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:#fff;max-width:420px">
+          <option value="全部"${sel === "全部" ? " selected" : ""}>全部学习项</option>
+          ${items.map(n => `<option value="${esc(n)}"${sel === n ? " selected" : ""}>${esc(n)}</option>`).join("")}
+        </select>
+        <span style="font-size:12px;color:var(--t2)">离职员工（${roster.length} 人）单独归档，不参与看板任何统计口径</span>
+      </div>
+      <table><tr><th>门店</th><th>姓名</th><th>职位</th><th>所属区域</th><th>各项学习汇总</th><th>离职日期</th></tr>${rows}</table>
     </div>`;
 }
 

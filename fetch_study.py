@@ -122,7 +122,8 @@ def fetch_plan_detail(tok, plan):
         page += 1
     out["storeStats"] = stores
 
-    # 学员列表（分页）
+    # 学员列表（分页）：默认返回在职；离职学员需另用 empStatus:'lz' 拉取后合并
+    # （离职员工不参与统计口径，仅归入「离职管理档案」备查）
     emps, page = [], 1
     while True:
         d, err = call(tok, "/web/train/plan/findTrainPlanEmpList?version=1",
@@ -134,6 +135,20 @@ def fetch_plan_detail(tok, plan):
         if d.get("lastPage") or page >= 50:
             break
         page += 1
+    lz_emps, page = [], 1
+    while True:
+        d, err = call(tok, "/web/train/plan/findTrainPlanEmpList?version=1",
+                      {"planId": pid, "pageNumber": page, "pageSize": 100, "empStatus": "lz"})
+        if err or not d:
+            break
+        lz_emps += d.get("list", [])
+        if d.get("lastPage") or page >= 50:
+            break
+        page += 1
+    if lz_emps:
+        have = {e["employeeId"] for e in emps}
+        emps += [e for e in lz_emps if e["employeeId"] not in have]
+        print(f"  含离职学员 {len(lz_emps)} 人")
     out["emps"] = emps
     out["empCount"] = len(emps)
 
@@ -243,6 +258,30 @@ def fetch_evaluations():
     print(f"课程满意度: {len(surveys)} 条")
     return evals, surveys
 
+def fetch_resigned(tok):
+    """离职员工花名册：/web/md/emp/list 全量拉取后按 workStatus=='lz' 过滤。
+    不参与任何统计，仅供「离职管理档案」展示。"""
+    emps, page = [], 1
+    while True:
+        d, err = call(tok, "/web/md/emp/list?version=1",
+                      {"pageNumber": page, "pageSize": 1000})
+        if err or d is None:
+            print(f"[离职名单] 第{page}页失败: {err}")
+            break
+        rows = d if isinstance(d, list) else (d.get("list") or [])
+        emps += rows
+        if not rows or len(rows) < 1000 or page >= 10:
+            break
+        page += 1
+    lz = [{"employeeId": e.get("employeeId"), "employeeCode": e.get("employeeCode"),
+           "employeeName": e.get("employeeName"), "positionName": e.get("positionName"),
+           "store": e.get("fullName") or e.get("storeName") or "",
+           "region": e.get("organizeName") or "", "entryDate": e.get("entryDate") or "",
+           "departureDate": e.get("departureDate") or "", "departureCause": e.get("departureCause") or ""}
+          for e in emps if e.get("workStatus") == "lz"]
+    print(f"离职员工: {len(lz)} 人（花名册 {len(emps)} 人）")
+    return lz
+
 def main():
     tok = login()
     plans = fetch_all_plans(tok)
@@ -264,6 +303,7 @@ def main():
     data = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
             "evaluations": ev,
             "courseSurveys": cs,
+            "resigned": fetch_resigned(tok),
             "maps": fetch_maps(tok),
             "categories": list(dict.fromkeys([c for c, _ in CATEGORY_RULES] + [k for k in cats if k not in [x for x, _ in CATEGORY_RULES]])),
             "plans": []}
