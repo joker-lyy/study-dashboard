@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学习看板 · 培训部</title>
+<style>
+:root{
+  --brand:#FDD01B; --blue:#186BEB; --navy:#1A2A4A;
+  --bg:#f4f6fa; --card:#ffffff; --line:#e8ecf2;
+  --t1:#1A2A4A; --t2:#5a6b85; --red:#e5484d; --green:#2e9e5b; --orange:#f5a623;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:"PingFang SC","Microsoft YaHei",sans-serif}
+body{background:var(--bg);color:var(--t1);min-height:100vh}
+header{background:var(--navy);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:50}
+header .logo{width:34px;height:34px;border-radius:8px;background:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--navy)}
+header h1{font-size:18px;font-weight:700}
+header .gen{margin-left:auto;font-size:12px;color:#9fb0cc}
+nav.tabs{display:flex;gap:6px;background:var(--card);padding:10px 24px;border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:62px;z-index:49}
+nav.tabs button{border:none;background:transparent;padding:8px 16px;border-radius:8px;font-size:14px;color:var(--t2);cursor:pointer;white-space:nowrap;font-weight:600}
+nav.tabs button.active{background:var(--blue);color:#fff}
+nav.tabs button .n{font-size:11px;opacity:.75;margin-left:4px}
+main{max-width:1280px;margin:0 auto;padding:20px 24px 60px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card .k{font-size:12px;color:var(--t2)}
+.card .v{font-size:26px;font-weight:800;margin-top:4px}
+.card .v small{font-size:13px;font-weight:600;color:var(--t2)}
+.sec{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.sec h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.sec h3::before{content:"";width:4px;height:16px;border-radius:2px;background:var(--blue)}
+.planbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.planbar select{padding:8px 12px;border-radius:8px;border:1px solid var(--line);font-size:14px;min-width:280px;background:#fff}
+.subtabs{display:flex;gap:6px;margin-bottom:14px}
+.subtabs button{border:1px solid var(--line);background:#fff;padding:6px 14px;border-radius:20px;font-size:13px;color:var(--t2);cursor:pointer}
+.subtabs button.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f0f4fa;color:var(--t2);text-align:left;padding:9px 10px;font-weight:600;white-space:nowrap}
+td{padding:9px 10px;border-top:1px solid var(--line);white-space:nowrap}
+tr.clickable{cursor:pointer}
+tr.clickable:hover{background:#f6f9ff}
+.bar{height:8px;border-radius:4px;background:#edf1f7;width:110px;display:inline-block;vertical-align:middle;margin-right:8px}
+.bar i{display:block;height:100%;border-radius:4px;background:var(--blue)}
+.bar i.g{background:var(--green)}.bar i.o{background:var(--orange)}.bar i.r{background:var(--red)}
+.badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:600}
+.b-green{background:#e5f6ec;color:var(--green)}.b-orange{background:#fdf3e0;color:var(--orange)}
+.b-red{background:#fdeaea;color:var(--red)}.b-gray{background:#eef1f6;color:var(--t2)}
+.b-blue{background:#e8f0fe;color:var(--blue)}
+.modal-mask{position:fixed;inset:0;background:rgba(20,30,50,.45);display:none;align-items:flex-start;justify-content:center;z-index:100;padding:40px 16px}
+.modal-mask.show{display:flex}
+.modal{background:#fff;border-radius:14px;width:min(960px,100%);max-height:85vh;display:flex;flex-direction:column}
+.modal .mhead{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center}
+.modal .mhead h3{font-size:16px}
+.modal .mhead .x{margin-left:auto;cursor:pointer;font-size:20px;color:var(--t2)}
+.modal .mbody{padding:16px 20px;overflow:auto}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.filters button{border:1px solid var(--line);background:#fff;padding:5px 13px;border-radius:16px;font-size:12px;color:var(--t2);cursor:pointer}
+.filters button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.empty{padding:40px;text-align:center;color:var(--t2);font-size:13px}
+.summary-sec{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.summary-sec td{white-space:normal;word-break:break-all}
+
+.mod-line{display:flex;gap:8px;align-items:flex-start;margin:4px 0}
+.mod-txt{flex:1;font-size:13px;line-height:1.6;color:var(--t1)}
+.eval-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:6px 0}
+.btn{padding:9px 16px;border:none;border-radius:8px;background:#186BEB;color:#fff;font-size:14px;cursor:pointer}
+/* 可点击延展信息统一蓝色标识 */
+tr.clickable td{color:var(--t1)}
+tr.clickable td:first-child{color:var(--blue);font-weight:600}
+tr.clickable:hover td:first-child{text-decoration:underline}
+.badge.linked{cursor:pointer;color:var(--blue)}
+/* 右上角区间选择 */
+.rangebar{display:flex;gap:8px;align-items:center;margin-left:auto}
+.rangebar button{border:1px solid rgba(255,255,255,.25);background:transparent;color:#cfd9ea;padding:5px 12px;border-radius:16px;font-size:12px;cursor:pointer;white-space:nowrap}
+.rangebar button.active{background:var(--brand);color:var(--navy);border-color:var(--brand);font-weight:700}
+.rangebar input[type=date]{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;border-radius:8px;padding:4px 8px;font-size:12px;color-scheme:dark}
+.rangebar .sep{color:#9fb0cc;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">学</div>
+  <h1>学习看板</h1>
+  <span class="gen" id="genTime"></span>
+  <div class="rangebar" id="rangeBar">
+    <button data-r="全部" class="active" onclick="setRange('全部')">全部</button>
+    <button data-r="上月" onclick="setRange('上月')">上月</button>
+    <button data-r="本月" onclick="setRange('本月')">本月</button>
+    <input type="date" id="rFrom" onchange="setRange('区间')"><span class="sep">至</span>
+    <input type="date" id="rTo" onchange="setRange('区间')">
+  </div>
+</header>
+
+<nav class="tabs" id="mainTabs"></nav>
+<nav class="tabs" id="promoBar" style="display:none"></nav>
+<main id="main"></main>
+
+<div class="modal-mask" id="mask">
+  <div class="modal">
+    <div class="mhead"><h3 id="mTitle">门店明细</h3><span class="x" onclick="closeModal()">×</span></div>
+    <div class="mbody" id="mBody"></div>
+  </div>
+</div>
+
+<script src="app.js?v=8"></script>
+</body>
+</html>
