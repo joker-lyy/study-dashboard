@@ -283,10 +283,10 @@ function openAgg(label, nameEnc, keep) {
     const dayCells = stageNames.map(sn => {
       const stg = det && (det.stages || []).find(s => (s.n || "") === sn);
       const sts = stg ? (stg.t || []) : [];
-      // 出勤：请假 > 已签到（有任务完成记录）> 未签到
-      let att = `<span class="badge b-orange">未签到</span>`;
-      if (leaveOf(sn, e)) att = `<span class="badge b-gray">请假</span>`;
-      else if (sts.some(t => t[5] && t[5] !== "-")) att = `<span class="badge b-green">已签到</span>`;
+      // 出勤：请假 > 已签到（有任务完成记录）> 未签到（紧凑文字样式）
+      let att = `<span style="font-size:11px;font-weight:600;color:var(--orange)">未签到</span>`;
+      if (leaveOf(sn, e)) att = `<span style="font-size:11px;color:var(--t2)">请假</span>`;
+      else if (sts.some(t => t[5] && t[5] !== "-")) att = `<span style="font-size:11px;font-weight:600;color:var(--green)">已签到</span>`;
       // 分数：该天全部考核，多科/隔开；未考=有考试未完成；—=无考试；红=未达80
       const exams = sts.filter(t => t[1] === 4);
       const learn = sts.filter(t => t[1] === 3);
@@ -294,8 +294,8 @@ function openAgg(label, nameEnc, keep) {
       if (exams.length) {
         scoreStr = exams.map(t => scoreCell(t, false)).join("/");
       }
-      const learnStr = `<span style="font-size:11px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">课 ${cnt(learn)}</span>`;
-      return `<td style="text-align:center;white-space:nowrap">${att}</td><td style="text-align:center;white-space:nowrap">${scoreStr}<br>${learnStr}</td>`;
+      const learnStr = `<span style="font-size:10px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">课 ${cnt(learn)}</span>`;
+      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:11px;line-height:1.5"><div>${att}</div><div style="white-space:nowrap">${scoreStr}</div><div>${learnStr}</div></td>`;
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
@@ -306,12 +306,11 @@ function openAgg(label, nameEnc, keep) {
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
     <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${hasDet
-      ? "说明：实操/总进度为整个计划口径；后面按<b>天（阶段）</b>展示，出勤=该天有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分；\"课 x/y\"=当天必修课完成数，红色=当天必修课未全部完成。"
+      ? "说明：实操/总进度为整个计划口径；后面按<b>天（阶段）</b>一列展示，格内三行：出勤（已签到/请假/未签到）、分数（当天全部考核，多科 / 隔开，未考红字）、课 x/y（当天必修课完成数，红色=未全部完成）。"
       : "⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。"}</div>
     ${!hasDet
       ? `${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
-      : (rows ? `<table><tr><th rowspan="2">姓名</th><th rowspan="2">门店</th><th rowspan="2">实操</th><th rowspan="2">总进度</th>${stageNames.map(sn => `<th colspan="2" style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:96px">${esc(sn)}</th>`).join("")}</tr>
-      ${stageNames.map(sn => `<th style="text-align:center;border-left:1px solid var(--line)">出勤</th><th style="text-align:center">分数</th>`).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`)}`;
+      : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>实操</th><th>总进度</th>${stageNames.map(sn => `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${esc(sn)}</th>`).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`)}`;
   document.getElementById("mask").classList.add("show");
 }
 
