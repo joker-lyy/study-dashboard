@@ -24,6 +24,15 @@ function barHtml(v) {
   const cls = v >= 80 ? "g" : v >= 40 ? "o" : "r";
   return `<span class="bar"><i class="${cls}" style="width:${Math.min(v, 100)}%"></i></span>${v.toFixed(1)}%`;
 }
+// 单科考试分数展示：未考红字、0分红字、未过红字、<80红字
+function scoreCell(t, suffix) {
+  const suf = suffix === false ? "" : "分";
+  if (!t || t[2] !== "W") return `<span style="color:#e64340;font-weight:600">未考</span>`;
+  const n = +t[3];
+  if (isNaN(n)) return `<span style="color:#e64340;font-weight:600">未考</span>`;
+  const bad = n < 80 || t[4] === "否";
+  return `<span style="${bad ? "color:#e64340;font-weight:600" : ""}">${n}${suf}${t[4] === "否" ? "(未过)" : ""}</span>`;
+}
 function esc(s) { return (s == null ? "" : String(s)).replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c])); }
 
 // 把学员的区域链路 "总经办/加盟服务部/新店运营组/刘浩区域" 拆出层级
@@ -283,17 +292,12 @@ function openAgg(label, nameEnc, keep) {
       const learn = sts.filter(t => t[1] === 3);
       let scoreStr = "—";
       if (exams.length) {
-        scoreStr = exams.map(t => {
-          if (t[2] !== "W") return `<span style="color:var(--t2)">未考</span>`;
-          const n = +t[3];
-          if (isNaN(n)) return `<span style="color:var(--t2)">未考</span>`;
-          return `<span style="${n < 80 ? "color:#e64340;font-weight:600" : ""}">${n}</span>`;
-        }).join("/");
+        scoreStr = exams.map(t => scoreCell(t, false)).join("/");
       }
       const learnStr = `<span style="font-size:11px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">课 ${cnt(learn)}</span>`;
       return `<td style="text-align:center;white-space:nowrap">${att}</td><td style="text-align:center;white-space:nowrap">${scoreStr}<br>${learnStr}</td>`;
     }).join("");
-    return `<tr><td>${i + 1}</td><td style="white-space:nowrap">${esc(e.empName)}</td><td style="max-width:130px">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
+    return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
   document.getElementById("mTitle").textContent = (p.planName || "") + " · " + name + " · 学习明细";
   document.getElementById("mBody").innerHTML = `
@@ -306,7 +310,7 @@ function openAgg(label, nameEnc, keep) {
       : "⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。"}</div>
     ${!hasDet
       ? `${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
-      : (rows ? `<table><tr><th rowspan="2">序号</th><th rowspan="2">姓名</th><th rowspan="2">门店</th><th rowspan="2">实操</th><th rowspan="2">总进度</th>${stageNames.map(sn => `<th colspan="2" style="text-align:center;border-left:1px solid var(--line)">${esc(sn)}</th>`).join("")}</tr>
+      : (rows ? `<table><tr><th rowspan="2">姓名</th><th rowspan="2">门店</th><th rowspan="2">实操</th><th rowspan="2">总进度</th>${stageNames.map(sn => `<th colspan="2" style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:96px">${esc(sn)}</th>`).join("")}</tr>
       ${stageNames.map(sn => `<th style="text-align:center;border-left:1px solid var(--line)">出勤</th><th style="text-align:center">分数</th>`).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`)}`;
   document.getElementById("mask").classList.add("show");
 }
@@ -318,17 +322,29 @@ function storeScore(s) {
   return train * 0.3 + comp * 0.7;
 }
 function storeRankTable(p) {
-  const rows = (p.storeStats || []).map(s => ({ s, score: storeScore(s) })).sort((a, b) => b.score - a.score);
+  // 完成率按员工明细实时联动（done/total），平台字段为0时兜底
+  const rows = (p.storeStats || []).map(s => {
+    const emps = (p.emps || []).filter(e => storeOf(e) === s.storeName && statusOf(e) != null);
+    let done = 0, total = 0, doneN = 0;
+    emps.forEach(e => {
+      const st = empStat(p, e);
+      if (st) { done += st.done; total += st.total; if (st.total && st.done >= st.total) doneN++; }
+    });
+    const rate = total ? done / total * 100 : pct(s.completionRate || s.ztwclValue);
+    const link = (s.organizeLink || "").split("/").filter(Boolean);
+    return { s, rate, empN: emps.length, doneN, region: link[link.length - 1] || "" };
+  }).sort((a, b) => b.rate - a.rate);
   if (!rows.length) return `<div class="empty">暂无门店数据</div>`;
-  return `<table><tr><th>排名</th><th>门店</th><th>编号</th><th>组织链路</th><th>应学</th><th>已完成</th><th>完成率</th><th>综合分</th><th>状态</th></tr>
-    ${rows.map((r, i) => `<tr class="clickable" onclick="openStore('${r.s.storeId}')">
-      <td>${i + 1}</td><td>${esc(r.s.storeName)}</td><td>${esc(r.s.storeCode || "")}</td>
-      <td style="color:var(--t2)">${esc(r.s.organizeLink || "")}</td>
-      <td>${r.s.numberOfPersonsDueToComplete ?? "-"}</td><td>${r.s.numberOfPeopleCompleted ?? "-"}</td>
-      <td>${barHtml(pct(r.s.completionRate || r.s.ztwclValue))}</td>
-      <td><b>${r.score.toFixed(1)}</b></td><td><span class="badge ${r.s.storeStudyStatus === "已参训" ? "b-green" : "b-orange"}">${esc(r.s.storeStudyStatus || "-")}</span></td>
+  return `<table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th>已完成人数</th><th>完成率</th><th>状态</th><th style="width:90px">操作</th></tr>
+    ${rows.map((r, i) => `<tr>
+      <td>${i + 1}</td><td style="white-space:nowrap">${esc(r.s.storeName)}</td>
+      <td style="color:var(--t2)">${esc(r.region)}</td>
+      <td style="text-align:center">${r.empN}</td><td style="text-align:center">${r.doneN}</td>
+      <td>${barHtml(r.rate)}</td>
+      <td><span class="badge ${r.s.storeStudyStatus === "已参训" ? "b-green" : "b-orange"}">${esc(r.s.storeStudyStatus || "-")}</span></td>
+      <td style="text-align:center"><button class="btn" style="padding:4px 10px;font-size:12px" onclick="event.stopPropagation();openStore('${r.s.storeId}')">查看明细</button></td>
     </tr>`).join("")}</table>
-    <div style="margin-top:8px;font-size:12px;color:var(--t2)">综合分 = 参训率×30% + 完成率×70%，点击行查看门店员工学习明细</div>`;
+    <div style="margin-top:8px;font-size:12px;color:var(--t2)">完成率 = 门店学员已完成任务 ÷ 应完成任务（按学习明细实时统计），点「查看明细」看门店员工学习明细</div>`;
 }
 
 /* ---------- 阶段学员明细弹窗 ---------- */
@@ -408,12 +424,7 @@ function renderStageModal() {
     // 分数：该阶段全部考核，多科以/隔开；未考=有考试未完成；—=无考试；红=未达80
     let scoreStr = "—";
     if (exams.length) {
-      scoreStr = exams.map(t => {
-        if (t[2] !== "W") return `<span style="color:var(--t2)">未考</span>`;
-        const n = +t[3];
-        if (isNaN(n)) return `<span style="color:var(--t2)">未考</span>`;
-        return `<span style="${n < 80 ? "color:#e64340;font-weight:600" : ""}">${n}分</span>`;
-      }).join("/");
+      scoreStr = exams.map(t => scoreCell(t)).join("/");
     }
     const stageDoneCnt = `${ts.filter(t => t[2] === "W").length}/${ts.length}`;
     const [attTxt, attCls] = attOf(e);
@@ -422,9 +433,12 @@ function renderStageModal() {
     const detail = ts.map(t => {
       const [name, type, st, score, isPass] = t;
       const ok = st === "W";
-      let extra = "";
-      if (type === 4) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
-      return `<div style="padding:1px 0;color:${ok ? "var(--t1)" : "#e64340"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
+      let extra = "", bad = !ok;
+      if (type === 4) {
+        if (score !== "-" && score != null && !isNaN(+score)) { extra = `（${score}分${isPass === "否" ? "，未过" : ""}）`; if (+score < 80 || +score === 0 || isPass === "否") bad = true; }
+        else extra = "（未考）";
+      }
+      return `<div style="padding:1px 0;color:${bad ? "#e64340" : "var(--t1)"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
     return `<tr>
       <td>${esc(e.empName)}</td>
