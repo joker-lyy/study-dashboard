@@ -356,8 +356,9 @@ function aggDetailTable(p, emps) {
     const ts = planTasks(p, e);
     const stat = empStat(p, e);
     const det = p.empDetails && p.empDetails[String(e.employeeId)];
-    // 出勤 = 实际出勤(已签到天数) / 应出勤(周期内已开始天数，即 stageNames.length，未来天不计)
+    // 出勤 = 实际出勤(已签到且未请假天数) / 应出勤(周期内已开始天数，即 stageNames.length，未来天不计；请假不计出勤)
     const attCnt = stageNames.filter(sn => {
+      if (leaveOf(sn, e)) return false;
       const stg = det && (det.stages || []).find(s => (s.n || "") === sn);
       return stg && (stg.t || []).some(t => t[5] && t[5] !== "-");
     }).length;
@@ -403,6 +404,8 @@ function flatDetailTable(p, emps) {
     const stat = empStat(p, e);
     const det = p.empDetails && p.empDetails[String(e.employeeId)];
     const att = stageNames.filter(sn => {
+      const lv = p.leaves && p.leaves[sn];
+      if (lv && (lv.includes(String(e.employeeId)) || lv.includes(e.empName))) return false; // 请假不计出勤
       const stg = det && det.stages && det.stages.find(x => x.n === sn);
       return stg && (stg.t || []).some(t => t[5] && t[5] !== "-");
     }).length;
