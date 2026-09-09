@@ -354,10 +354,14 @@ function aggDetailTable(p, emps) {
       return `<tr><td>${i + 1}</td><td style="white-space:nowrap">${esc(e.empName)}</td><td style="max-width:130px">${esc(storeOf(e))}</td><td style="text-align:center"><span class="badge ${cls}">${txt}</span></td></tr>`;
     }
     const ts = planTasks(p, e);
-    const ops = ts.filter(t => [5, 7, 8].includes(t[1]));
-    const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
     const stat = empStat(p, e);
     const det = p.empDetails && p.empDetails[String(e.employeeId)];
+    // 出勤 = 实际出勤(已签到天数) / 应出勤(周期内已开始天数，即 stageNames.length，未来天不计)
+    const attCnt = stageNames.filter(sn => {
+      const stg = det && (det.stages || []).find(s => (s.n || "") === sn);
+      return stg && (stg.t || []).some(t => t[5] && t[5] !== "-");
+    }).length;
+    const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
     const dayCells = stageNames.map(sn => {
       const stg = det && (det.stages || []).find(s => (s.n || "") === sn);
       const sts = stg ? (stg.t || []) : [];
@@ -377,11 +381,11 @@ function aggDetailTable(p, emps) {
       const learnStr = `<div style="font-size:11px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">必修课 ${cnt(learn)}</div>`;
       return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div>${learnStr}</td>`;
     }).join("");
-    return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
+    return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center;white-space:nowrap">${attCnt}/${stageNames.length}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
   return !hasDet
     ? `<div style="font-size:12px;color:#b45309;background:#fff7e6;border:1px solid #ffe3a3;border-radius:8px;padding:8px 12px;margin-bottom:8px">⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。</div>${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
-    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>实操</th><th>总进度</th>${stageNames.map(sn => { const ds = stageDateStr(p, sn); const short = esc(sn).replace(/新加盟商培训/g, ""); return `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${short}${ds ? `<div style="font-size:11px;font-weight:400;color:var(--t2)">${ds}</div>` : ""}</th>`; }).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
+    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>出勤</th><th>总进度</th>${stageNames.map(sn => { const ds = stageDateStr(p, sn); const short = esc(sn).replace(/新加盟商培训/g, ""); return `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${short}${ds ? `<div style="font-size:11px;font-weight:400;color:var(--t2)">${ds}</div>` : ""}</th>`; }).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
 }
 
 // 线上线下培训的明细版式：姓名/门店/区域/实操/考试分数/阶段进度/完成任务明细（抓取同新加盟商培训）
