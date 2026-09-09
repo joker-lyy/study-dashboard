@@ -388,12 +388,20 @@ function aggDetailTable(p, emps) {
 function flatDetailTable(p, emps) {
   const hasDet = p.empDetails && Object.keys(p.empDetails).length > 0;
   if (!hasDet) return aggDetailTable(p, emps);
+  // 出勤：整个计划的出勤情况 = 实际出勤(已签到的天数) / 应出勤(周期内已开始的天数，未来天不计)
+  const stageNames = [];
+  (p.emps || []).forEach(e0 => { const d0 = p.empDetails && p.empDetails[String(e0.employeeId)]; (d0 && d0.stages || []).forEach(s => { if (s.n && !stageNames.includes(s.n)) stageNames.push(s.n); }); });
+  for (let i = stageNames.length - 1; i >= 0; i--) if (!stageInCycle(p, stageNames[i])) stageNames.splice(i, 1);
+  const dueDays = stageNames.length;
   const rows = emps.map(e => {
     const ts = planTasks(p, e);
-    const ops = ts.filter(t => [5, 7, 8].includes(t[1]));
     const exams = ts.filter(t => t[1] === 4);
-    const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
     const stat = empStat(p, e);
+    const det = p.empDetails && p.empDetails[String(e.employeeId)];
+    const att = stageNames.filter(sn => {
+      const stg = det && det.stages && det.stages.find(x => x.n === sn);
+      return stg && (stg.t || []).some(t => t[5] && t[5] !== "-");
+    }).length;
     const scoreStr = exams.length ? exams.map(t => scoreCell(t, false)).join("</div><div>") : "—";
     const detail = ts.map(t => {
       const [name, type, st, score, isPass] = t;
@@ -404,9 +412,9 @@ function flatDetailTable(p, emps) {
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
     const fins = ts.filter(t => t[2] === "W" && t[5]).map(t => t[5]).sort();
     const finStr = fins.length ? fins[fins.length - 1] : "—";
-    return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="white-space:nowrap">${esc(regionOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center"><div>${scoreStr}</div></td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td><td style="white-space:nowrap;font-size:12px">${finStr}</td></tr>`;
+    return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="white-space:nowrap">${esc(regionOf(e))}</td><td style="text-align:center;white-space:nowrap">${att}/${dueDays}</td><td style="text-align:center"><div>${scoreStr}</div></td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td><td style="white-space:nowrap;font-size:12px">${finStr}</td></tr>`;
   }).join("");
-  return `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>实操</th><th>考试分数</th><th>阶段进度</th><th style="min-width:260px">完成任务明细</th><th>完成时间</th></tr>${rows}</table>`;
+  return `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>出勤</th><th>考试分数</th><th>阶段进度</th><th style="min-width:260px">完成任务明细</th><th>完成时间</th></tr>${rows}</table>`;
 }
 
 function aggDetailRender(p, emps, title) {
