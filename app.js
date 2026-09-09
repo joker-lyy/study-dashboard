@@ -1239,13 +1239,31 @@ window.sharePng = async function (mode) {
           <button onclick="document.getElementById('pngShareTip').remove()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
         </div>`, true);
     } else {
+      const tryCopy = async () => {
+        let ok = false;
+        try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); ok = true; } catch (e) {}
+        const btn = document.getElementById("pngCopyBtn");
+        if (btn) btn.textContent = ok ? "✅ 已复制，去聊天窗口粘贴" : "复制失败，请长按图片保存/转发";
+        if (ok) setTimeout(() => { const t = document.getElementById("pngShareTip"); if (t) t.remove(); }, 1500);
+      };
+      let canShare = false;
+      try { canShare = !!(navigator.canShare && navigator.canShare({ files: [new File([blob], fname, { type: "image/png" })] })); } catch (e) {}
       showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">🖼 图片已生成</div>
-        <div style="font-size:12px;color:#7a8399;margin-bottom:10px">浏览器未授权剪贴板，可「下载文件」（文件名：${fname}）后直接发送，或在图片上右键复制。</div>
+        <div style="font-size:12px;color:#7a8399;margin-bottom:10px">浏览器未自动复制。可点「复制图片」重试；手机上推荐「转发/分享」直接调起微信发送，或长按图片保存后转发。</div>
         <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap">
+          <button id="pngCopyBtn" onclick="_pngCopyRetry()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">复制图片</button>
+          ${canShare ? `<button onclick="_pngShareRetry()" style="background:#07c160;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">转发/分享</button>` : ""}
           <a download="${fname}" href="${dataUrl}" style="background:#2f6fed;color:#fff;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;text-decoration:none">下载文件</a>
           <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">关闭</button>
         </div>`, true);
+      window._pngCopyRetry = tryCopy;
+      window._pngShareRetry = async () => {
+        try {
+          const file = new File([blob], fname, { type: "image/png" });
+          await navigator.share({ files: [file], title: title });
+        } catch (e) {}
+      };
     }
   } catch (e) {
     showTip(`<div style="font-size:15px;font-weight:700;color:#e64340;margin-bottom:6px">生成失败</div><div style="font-size:12px;color:#7a8399">${esc(String(e && e.message || e))}<br>可改用「🔗 分享」按钮发链接。</div>
