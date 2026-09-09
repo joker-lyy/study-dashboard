@@ -16,6 +16,17 @@ const TYPE_NAME = { 3: "必修课", 4: "考试", 5: "作业", 7: "表单", 8: "�
 const STATUS_MAP = { 0: ["未开始", "b-gray"], 1: ["进行中", "b-orange"], 2: ["已完成", "b-green"] };
 const CORE_CATS = ["新加盟商培训", "线上线下培训", "员工培训/晋升"];
 
+// 周期判断：第N天阶段日期 = 计划开始日 + (N-1)；未到周期的阶段不展示（避免满屏未来"未签到/未考"）
+function stageInCycle(p, sn) {
+  const m = /第(\d+)天/.exec(sn || "");
+  if (!m || !p || !p.startDate) return true;
+  const sd = new Date(p.startDate + "T00:00:00");
+  if (isNaN(sd)) return true;
+  const d = new Date(sd); d.setDate(d.getDate() + (+m[1] - 1));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return d <= today;
+}
+
 function pct(s) {
   if (!s) return 0;
   return parseFloat(String(s).replace("%", "")) || 0;
@@ -200,7 +211,7 @@ function renderCat() {
     </div>`;
 
   // 阶段统计（行可点 -> 阶段学员明细）
-  const stageRows = (p.stageStats || []).map((s, i) => {
+  const stageRows = (p.stageStats || []).filter(s => stageInCycle(p, s.phaseName)).map((s, i) => {
     const key = s.phaseName;
     return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td>${s.numberOfPersonsDueToComplete}</td><td>${s.uninitiatedNumber}</td><td>${s.numberOfPeopleInProgress}</td><td>${s.numberOfPeopleCompleted}</td><td>${barHtml(pct(s.phaseCompletionRate))}</td></tr>`;
   }).join("");
@@ -281,6 +292,8 @@ function aggDetailTable(p, emps) {
     // 兜底：汇总所有学员出现的阶段
     Object.values(p.empDetails || {}).forEach(det => (det.stages || []).forEach(s => { if (s.n && !stageNames.includes(s.n)) stageNames.push(s.n); }));
   })();
+  // 未到周期的阶段（未来天）不展示
+  for (let i = stageNames.length - 1; i >= 0; i--) if (!stageInCycle(p, stageNames[i])) stageNames.splice(i, 1);
   const leaveOf = (sn, e) => {
     const lv = p.leaves && p.leaves[sn];
     return !!(lv && (lv.includes(String(e.employeeId)) || lv.includes(e.empName)));
