@@ -379,9 +379,11 @@ function flatDetailTable(p, emps) {
       if (type === 4) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
       return `<div style="padding:1px 0;color:${ok ? "var(--t1)" : "#e64340"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
-    return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="white-space:nowrap">${esc(regionOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center"><div>${scoreStr}</div></td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td></tr>`;
+    const fins = ts.filter(t => t[2] === "W" && t[5]).map(t => t[5]).sort();
+    const finStr = fins.length ? fins[fins.length - 1] : "—";
+    return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="white-space:nowrap">${esc(regionOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center"><div>${scoreStr}</div></td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td><td>${detail}</td><td style="white-space:nowrap;font-size:12px">${finStr}</td></tr>`;
   }).join("");
-  return `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>实操</th><th>考试分数</th><th>阶段进度</th><th style="min-width:260px">完成任务明细</th></tr>${rows}</table>`;
+  return `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>实操</th><th>考试分数</th><th>阶段进度</th><th style="min-width:260px">完成任务明细</th><th>完成时间</th></tr>${rows}</table>`;
 }
 
 function aggDetailRender(p, emps, title) {
