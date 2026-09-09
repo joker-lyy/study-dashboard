@@ -305,15 +305,15 @@ function aggDetailTable(p, emps) {
       else if (sts.some(t => t[5] && t[5] !== "-")) att = `<span style="font-size:11px;font-weight:600;color:var(--green)">已签到</span>`;
       // 分数：该天全部考核，多科/隔开；未考=有考试未完成；—=无考试；红=未达80
       const exams = sts.filter(t => t[1] === 4);
-      const learn = sts.filter(t => t[1] === 3);
+      // 必修课=网课(3)+实操课(8)：实操视频课（手握饭团等）同为强制学习，按必修口径统计
+      const learn = sts.filter(t => t[1] === 3 || t[1] === 8);
       let scoreStr = "—";
       if (exams.length) {
         // 多科竖排，每科一行，避免横向超出格子
         scoreStr = exams.map(t => scoreCell(t, false)).join("</div><div>");
       }
       const learnStr = `<div style="font-size:11px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">必修课 ${cnt(learn)}</div>`;
-      const opsStr = `<div style="font-size:11px;color:${ops.length && ops.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">实操 ${cnt(ops)}</div>`;
-      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div>${learnStr}${opsStr}</td>`;
+      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div>${learnStr}</td>`;
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
@@ -466,8 +466,9 @@ function renderStageModal() {
   const rows = emps.map(e => {
     const stage = stageOf(e);
     const ts = stage ? stage.t : [];
-    const learn = ts.filter(t => t[1] === 3), exams = ts.filter(t => t[1] === 4), ops = ts.filter(t => [5, 7, 8].includes(t[1]));
-    const cnt = a => `${a.filter(t => t[2] === "W").length}/${a.length}`;
+    // 必修课=网课(3)+实操课(8)：实操视频课同为强制学习；作业/表单(5/7)单列
+    const learn = ts.filter(t => t[1] === 3 || t[1] === 8), exams = ts.filter(t => t[1] === 4), ops = ts.filter(t => [5, 7].includes(t[1]));
+    const cnt = a => a.length ? `${a.filter(t => t[2] === "W").length}/${a.length}` : "—";
     // 分数：该阶段全部考核，多科以/隔开；未考=有考试未完成；—=无考试；红=未达80
     let scoreStr = "—";
     if (exams.length) {
