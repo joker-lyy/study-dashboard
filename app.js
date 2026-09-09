@@ -17,12 +17,27 @@ const STATUS_MAP = { 0: ["未开始", "b-gray"], 1: ["进行中", "b-orange"], 2
 const CORE_CATS = ["新加盟商培训", "线上线下培训", "员工培训/晋升"];
 
 // 周期判断：第N天阶段日期 = 计划开始日 + (N-1)；未到周期的阶段不展示（避免满屏未来"未签到/未考"）
+function cnDayNum(s) {
+  const m = /第([0-9０-９]+)天/.exec(s || "");
+  if (m) return parseInt(m[1].replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)), 10);
+  const m2 = /第([一二三四五六七八九十]+)天/.exec(s || "");
+  if (!m2) return null;
+  const cn = m2[1], D = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  if (cn === "十") return 10;
+  let n = 0;
+  const i = cn.indexOf("十");
+  if (i === -1) return D[cn] || null;
+  if (i > 0) n += D[cn[0]] || 0;
+  n *= 10;
+  if (i < cn.length - 1) n += D[cn[i + 1]] || 0;
+  return n;
+}
 function stageInCycle(p, sn) {
-  const m = /第(\d+)天/.exec(sn || "");
-  if (!m || !p || !p.startDate) return true;
+  const day = cnDayNum(sn);
+  if (day == null || !p || !p.startDate) return true;
   const sd = new Date(p.startDate + "T00:00:00");
   if (isNaN(sd)) return true;
-  const d = new Date(sd); d.setDate(d.getDate() + (+m[1] - 1));
+  const d = new Date(sd); d.setDate(d.getDate() + (day - 1));
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return d <= today;
 }
