@@ -1222,7 +1222,10 @@ window.sharePng = async function (mode) {
         const oldM = target.style.maxHeight, oldO = target.style.overflow, oldB = mb ? mb.style.overflow : "";
         target.style.maxHeight = "none"; target.style.overflow = "visible";
         if (mb) mb.style.overflow = "visible";
-        restore = () => { target.style.maxHeight = oldM; target.style.overflow = oldO; if (mb) mb.style.overflow = oldB; };
+        // html2canvas 对 position:fixed 祖先内的元素会按视口高度裁剪 → 截图瞬间把遮罩改为 static
+        const oldPos = modal.style.position, oldPad = modal.style.padding, oldOv = modal.style.overflow;
+        modal.style.position = "static"; modal.style.padding = "0"; modal.style.overflow = "visible";
+        restore = () => { target.style.maxHeight = oldM; target.style.overflow = oldO; if (mb) mb.style.overflow = oldB; modal.style.position = oldPos; modal.style.padding = oldPad; modal.style.overflow = oldOv; };
       }
     }
     const title = mode === "all"
@@ -1230,7 +1233,9 @@ window.sharePng = async function (mode) {
       : isModal ? ((modal.querySelector(".mhead h3") || {}).textContent || "学习明细") : ((document.querySelector("header h1") || {}).textContent || "学习看板");
     const canvas = await html2canvas(target, {
       useCORS: true, backgroundColor: "#f2f4f8", scale: 2, logging: false,
+      width: target.scrollWidth || undefined, height: target.scrollHeight || undefined,
       windowWidth: target.scrollWidth || undefined, windowHeight: target.scrollHeight || undefined,
+      scrollX: 0, scrollY: 0,
       ignoreElements: el => ["shareOverlay", "pngShareTip", "shareRoBar"].includes(el.id)
     });
     if (restore) restore();
@@ -1276,6 +1281,7 @@ window.sharePng = async function (mode) {
       };
     }
   } catch (e) {
+    if (typeof restore === "function") { try { restore(); } catch (_e) {} }
     showTip(`<div style="font-size:15px;font-weight:700;color:#e64340;margin-bottom:6px">生成失败</div><div style="font-size:12px;color:#7a8399">${esc(String(e && e.message || e))}<br>可改用「🔗 分享」按钮发链接。</div>
       <div style="display:flex;justify-content:flex-end;margin-top:10px"><button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">关闭</button></div>`, true);
   }
