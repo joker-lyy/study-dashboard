@@ -92,6 +92,7 @@ tr.clickable:hover td:first-child{text-decoration:underline}
   <h1>学习看板</h1>
   <span class="gen" id="genTime"></span>
   <button id="shareViewBtn" onclick="openShareOverlay()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔗 分享本视图</button>
+  <button onclick="sharePng()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🖼 分享图片</button>
   <div class="rangebar" id="rangeBar">
     <button data-r="全部" class="active" onclick="setRange('全部')">全部</button>
     <button data-r="上月" onclick="setRange('上月')">上月</button>
@@ -113,6 +114,6 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 </div>
 
 <script src="qrcode.min.js?v=14"></script>
-<script src="app.js?v=48"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>

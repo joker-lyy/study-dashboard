@@ -389,6 +389,7 @@ function aggDetailRender(p, emps, title) {
     <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';aggReopen&&aggReopen()">${f}</button>`).join("")}
       <button class="btn" style="padding:5px 14px;font-size:12px" onclick="openShareOverlay('agg')">🔗 分享</button>
+      <button class="btn" style="padding:5px 14px;font-size:12px" onclick="sharePng('modal')">🖼 图片</button>
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
     ${state.cat === "线上线下培训" ? flatDetailTable(p, emps) : aggDetailTable(p, emps)}`;
@@ -551,6 +552,7 @@ function renderStageModal() {
       <b>完成状态：</b>
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${state.dStatus === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="setDStatus('${f}')">${f}</button>`).join("")}
       <button class="btn" style="padding:5px 14px;font-size:12px" onclick="openShareOverlay('stage')">🔗 分享</button>
+      <button class="btn" style="padding:5px 14px;font-size:12px" onclick="sharePng('modal')">🖼 图片</button>
       <span style="color:var(--t2);margin-left:8px">共 ${emps.length} 人</span>
     </div>
     ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>出勤</th><th>必修课</th><th>考试分数</th><th>实操</th><th>阶段进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
@@ -1171,3 +1173,62 @@ function applyShareView(){
     }, 100);
   }
 }
+
+/* ---------- 分享PNG图片：渲染当前页面/弹窗为图片，复制到剪贴板直接粘贴发送 ---------- */
+window._loadHtml2canvas = function () {
+  if (window.html2canvas) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    s.onload = res; s.onerror = () => rej(new Error("html2canvas 加载失败"));
+    document.head.appendChild(s);
+  });
+};
+window.sharePng = async function (mode) {
+  // 提示浮层（进度/成功/失败/兜底预览共用）
+  const showTip = (html, sticky) => {
+    let ov = document.getElementById("pngShareTip");
+    if (!ov) { ov = document.createElement("div"); ov.id = "pngShareTip"; ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100000;display:flex;align-items:center;justify-content:center;padding:24px"; document.body.appendChild(ov); }
+    ov.onclick = e => { if (e.target === ov && !sticky) ov.remove(); };
+    ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:640px;width:100%;padding:18px 20px;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">${html}</div>`;
+    return ov;
+  };
+  showTip('<div style="font-size:14px;color:#1A2A4A">⏳ 正在生成图片，请稍候…</div>');
+  try {
+    await window._loadHtml2canvas();
+    const modal = document.getElementById("mask");
+    const isModal = mode === "modal" && modal && modal.classList.contains("show");
+    const target = isModal ? modal.querySelector(".modal") : document.body;
+    const title = isModal ? ((modal.querySelector(".mhead h3") || {}).textContent || "学习明细") : ((document.querySelector("header h1") || {}).textContent || "学习看板");
+    const canvas = await html2canvas(target, {
+      useCORS: true, backgroundColor: "#f2f4f8", scale: 2, logging: false,
+      ignoreElements: el => ["shareOverlay", "pngShareTip", "shareRoBar"].includes(el.id)
+    });
+    const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+    // 优先复制到剪贴板：微信/聊天窗口直接 Ctrl+V 发送
+    let copied = false;
+    try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
+    const dataUrl = canvas.toDataURL("image/png");
+    const fname = title.replace(/[\\/:*?"<>|]/g, "").trim() + ".png";
+    if (copied) {
+      showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">✅ 图片已复制</div>
+        <div style="font-size:12px;color:#7a8399;margin-bottom:10px">直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送，无需保存文件。</div>
+        <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <a download="${fname}" href="${dataUrl}" style="background:#f0f2f7;color:#1A2A4A;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;text-decoration:none">下载文件</a>
+          <button onclick="document.getElementById('pngShareTip').remove()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
+        </div>`, true);
+    } else {
+      showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">🖼 图片已生成</div>
+        <div style="font-size:12px;color:#7a8399;margin-bottom:10px">浏览器未授权剪贴板，可「下载文件」（文件名：${fname}）后直接发送，或在图片上右键复制。</div>
+        <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <a download="${fname}" href="${dataUrl}" style="background:#2f6fed;color:#fff;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;text-decoration:none">下载文件</a>
+          <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">关闭</button>
+        </div>`, true);
+    }
+  } catch (e) {
+    showTip(`<div style="font-size:15px;font-weight:700;color:#e64340;margin-bottom:6px">生成失败</div><div style="font-size:12px;color:#7a8399">${esc(String(e && e.message || e))}<br>可改用「🔗 分享」按钮发链接。</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px"><button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">关闭</button></div>`, true);
+  }
+};
