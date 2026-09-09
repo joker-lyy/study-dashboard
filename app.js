@@ -1214,6 +1214,14 @@ window.sharePng = async function (mode) {
       }
     } else {
       target = isModal ? modal.querySelector(".modal") : document.body;
+      if (isModal) {
+        // 临时解除弹窗限高与内部滚动，让整张表全部渲染，截完还原
+        const mb = modal.querySelector(".mbody");
+        const oldM = modal.style.maxHeight, oldO = modal.style.overflow, oldB = mb ? mb.style.overflow : "";
+        modal.style.maxHeight = "none"; modal.style.overflow = "visible";
+        if (mb) mb.style.overflow = "visible";
+        restore = () => { modal.style.maxHeight = oldM; modal.style.overflow = oldO; if (mb) mb.style.overflow = oldB; };
+      }
     }
     const title = mode === "all"
       ? (((plansInRange(state.cat)[state.planIdx] || {}).planName || "学习看板") + " · 全体学习明细")
