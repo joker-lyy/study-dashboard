@@ -249,7 +249,7 @@ function renderCat() {
   else if (state.sub === "门店分数排名及明细") body = storeRankTable(p);
   else body = (() => {
     const emps = (p.emps || []).filter(e => statusOf(e) != null);
-    return emps.length ? `<div style="font-size:12px;color:var(--t2);margin-bottom:6px">全体学习明细（门店列可区分所属门店），同「查看明细」格式</div>${aggDetailTable(p, emps)}` : `<div class="empty">暂无学员数据</div>`;
+    return emps.length ? `<div style="font-size:12px;color:var(--t2);margin-bottom:6px">${esc((p.planName || "学习看板") + " 学员学习明细")}</div>${aggDetailTable(p, emps)}` : `<div class="empty">暂无学员数据</div>`;
   })();
 
   el.innerHTML = `
@@ -358,7 +358,7 @@ function aggDetailTable(p, emps) {
   }).join("");
   return !hasDet
     ? `<div style="font-size:12px;color:#b45309;background:#fff7e6;border:1px solid #ffe3a3;border-radius:8px;padding:8px 12px;margin-bottom:8px">⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。</div>${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
-    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>实操</th><th>总进度</th>${stageNames.map(sn => { const ds = stageDateStr(p, sn); return `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${esc(sn)}${ds ? `<div style="font-size:11px;font-weight:400;color:var(--t2)">${ds}</div>` : ""}</th>`; }).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
+    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>实操</th><th>总进度</th>${stageNames.map(sn => { const ds = stageDateStr(p, sn); const short = esc(sn).replace(/新加盟商培训/g, ""); return `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${short}${ds ? `<div style="font-size:11px;font-weight:400;color:var(--t2)">${ds}</div>` : ""}</th>`; }).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
 }
 
 // 线上线下培训的明细版式：姓名/门店/区域/实操/考试分数/阶段进度/完成任务明细（抓取同新加盟商培训）
