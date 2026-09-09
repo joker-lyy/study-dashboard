@@ -1129,6 +1129,16 @@ function applyShareView(){
   const rf = document.getElementById("rFrom"), rt = document.getElementById("rTo");
   if (state.range === "区间") { if (rf) rf.value = state.rFrom || ""; if (rt) rt.value = state.rTo || ""; }
   if (o.aggFilter) { try { aggFilter = o.aggFilter; } catch(e){} }
+  // 弹窗级分享：隐藏页面全部背景，只显示弹窗本体（参考巡店看板独占模式）
+  if (o.m) {
+    if (!document.getElementById("shareSoloStyle")) {
+      const st2 = document.createElement("style");
+      st2.id = "shareSoloStyle";
+      st2.textContent = "body.share-solo>header,body.share-solo #mainTabs,body.share-solo #main,body.share-solo #promoBar{display:none!important}body.share-solo{overflow:hidden}";
+      document.head.appendChild(st2);
+    }
+    document.body.classList.add("share-solo");
+  }
   render();
   showShareRoBar();
   // 弹窗级分享：还原对应弹窗
@@ -1139,5 +1149,16 @@ function applyShareView(){
     } catch(e){ console.warn("agg share replay failed", e); }
   } else if (o.m === "stage" && o.stageKey) {
     try { openStage(o.stageKey); } catch(e){ console.warn("stage share replay failed", e); }
+  }
+  if (o.m) {
+    // 弹窗遮罩改为不透明全屏，看不到也点不到弹窗以外内容
+    setTimeout(() => {
+      const mask = document.getElementById("mask");
+      if (mask && mask.classList.contains("show")) {
+        mask.style.background = "#f2f4f8";
+        const box = mask.querySelector(".modal");
+        if (box) { box.style.maxWidth = "100%"; box.style.width = "100%"; box.style.height = "100vh"; box.style.maxHeight = "100vh"; box.style.borderRadius = "0"; box.style.margin = "0"; }
+      }
+    }, 100);
   }
 }
