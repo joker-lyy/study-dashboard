@@ -269,6 +269,7 @@ function openAgg(label, nameEnc, keep) {
   let emps = (p.emps || []).filter(e => statusOf(e) != null && keyFn(e) === name);
   emps = aggFilterEmps(p, emps);
   aggReopen = () => openAgg(label, nameEnc, true);
+  window.__aggShare = { kind: "agg", label, nameEnc };
   aggDetailRender(p, emps, (p.planName || "") + " · " + name + " · 学习明细");
 }
 function aggFilterEmps(p, emps) {
@@ -363,6 +364,7 @@ function aggDetailRender(p, emps, title) {
   document.getElementById("mBody").innerHTML = `
     <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';aggReopen&&aggReopen()">${f}</button>`).join("")}
+      <button class="btn" style="padding:5px 14px;font-size:12px" onclick="openShareOverlay('agg')">🔗 分享</button>
       <span style="margin-left:auto;font-size:12px;color:var(--t2)">共 ${emps.length} 人</span>
     </div>
     ${state.cat === "线上线下培训" ? flatDetailTable(p, emps) : aggDetailTable(p, emps)}`;
@@ -524,6 +526,7 @@ function renderStageModal() {
     <div style="margin-bottom:8px;font-size:13px;display:flex;align-items:center;gap:6px">
       <b>完成状态：</b>
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${state.dStatus === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="setDStatus('${f}')">${f}</button>`).join("")}
+      <button class="btn" style="padding:5px 14px;font-size:12px" onclick="openShareOverlay('stage')">🔗 分享</button>
       <span style="color:var(--t2);margin-left:8px">共 ${emps.length} 人</span>
     </div>
     ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>区域</th><th>出勤</th><th>必修课</th><th>考试分数</th><th>实操</th><th>阶段进度</th><th>完成任务明细</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`;
@@ -538,6 +541,7 @@ function openStore(storeId) {
   let emps = (p.emps || []).filter(e => storeOf(e) === (st && st.storeName) && statusOf(e) != null);
   emps = aggFilterEmps(p, emps);
   aggReopen = () => openStore(storeId);
+  window.__aggShare = { kind: "store", storeId: String(storeId) };
   aggDetailRender(p, emps, (st ? st.storeName : "门店") + " · 学习明细");
 }
 function empStatusBadge(stat, e) {
@@ -1028,6 +1032,97 @@ fetch("data/data.json?v=" + Date.now()).then(r => r.json()).then(d => {
   DATA = d;
   document.getElementById("genTime").textContent = "数据更新于 " + d.generatedAt;
   render();
+  if (typeof applyShareView === "function") applyShareView();
 }).catch(e => {
   document.getElementById("main").innerHTML = `<div class="sec empty">数据加载失败：${esc(e)}<br>请先运行 fetch_study.py，并用「启动看板.bat」打开</div>`;
 });
+
+/* ---------- 分享链接（参考巡店看板 fix134 逻辑） ---------- */
+function b64uEnc(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+function b64uDec(s){ s = String(s).replace(/-/g,"+").replace(/_/g,"/"); while(s.length % 4) s += "="; try{ return decodeURIComponent(escape(atob(s))); }catch(e){ return ""; } }
+const SHARE_BASE_KEYS = ["tab","planIdx","sub","range","rFrom","rTo","gFilter","promoSub","promoMapIdx","promoSince","pRegion","pGroup","pStore","evalSub","storeSearch"];
+const SHARE_MODAL_KEYS = SHARE_BASE_KEYS.concat(["dStatus","stageKey","dGroups","dRegions"]);
+function shareSnap(mod){
+  const keys = mod ? SHARE_MODAL_KEYS : SHARE_BASE_KEYS;
+  const o = {};
+  keys.forEach(k => o[k] = state[k]);
+  return o;
+}
+window.openShareOverlay = function(mod){
+  let st;
+  if (mod === "agg" && window.__aggShare) {
+    st = shareSnap("modal");
+    st.m = "agg"; st.kind = __aggShare.kind;
+    if (__aggShare.kind === "agg") { st.label = __aggShare.label; st.nameEnc = __aggShare.nameEnc; }
+    else st.storeId = __aggShare.storeId;
+    st.aggFilter = (typeof aggFilter !== "undefined") ? aggFilter : "全部";
+  } else if (mod === "stage" && state.stageKey) {
+    st = shareSnap("modal"); st.m = "stage";
+  } else {
+    st = shareSnap();
+  }
+  const url = location.origin + location.pathname + "#s=" + b64uEnc(JSON.stringify(st));
+  let ov = document.getElementById("shareOverlay");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "shareOverlay";
+    ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px";
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+  }
+  const isModal = !!st.m;
+  const hint = isModal ? "对方打开后仅看到这个弹窗的学习明细（只读）" : "对方打开后直接落到当前页签/筛选的视图";
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:12px;max-width:560px;width:100%;padding:18px 20px" onclick="event.stopPropagation()">
+      <div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">🔗 分享链接已生成</div>
+      <div style="font-size:12px;color:#7a8399;margin-bottom:10px">${hint}</div>
+      <textarea id="shareUrlBox" readonly style="width:100%;height:72px;border:1px solid #e3e6ee;border-radius:8px;padding:8px;font-size:12px;color:#1A2A4A;resize:none">${url}</textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <button id="shareCopyBtn" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">复制链接</button>
+        <button onclick="document.getElementById('shareOverlay').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">关闭</button>
+      </div>
+    </div>`;
+  const box = ov.querySelector("#shareUrlBox");
+  box.onclick = () => box.select();
+  ov.querySelector("#shareCopyBtn").onclick = () => {
+    box.select(); box.setSelectionRange(0, url.length);
+    let done = false;
+    try{ done = document.execCommand("copy"); }catch(e){}
+    if (!done && navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(url).then(()=>{},()=>{}); done = true; }
+    const btn = ov.querySelector("#shareCopyBtn");
+    btn.textContent = done ? "✅ 已复制" : "请手动 Ctrl+C 复制";
+    setTimeout(() => { btn.textContent = "复制链接"; }, 2000);
+  };
+  setTimeout(() => box.select(), 50);
+};
+function readShareHash(){
+  const m = (location.hash || "").match(/[#&]s=([A-Za-z0-9\-_]+)/);
+  if (!m) return null;
+  try { const o = JSON.parse(b64uDec(m[1])); return (o && o.tab !== undefined) ? o : null; } catch(e){ return null; }
+}
+function showShareRoBar(){
+  if (document.getElementById("shareRoBar")) return;
+  document.body.insertAdjacentHTML("beforeend",
+    '<div id="shareRoBar" style="position:fixed;left:0;right:0;bottom:0;background:#1A2A4A;color:#fff;padding:7px 16px;font-size:12px;text-align:center;z-index:99998">📖 只读分享视图 · 由他人通过分享链接打开</div>');
+}
+function applyShareView(){
+  const o = readShareHash();
+  if (!o) return;
+  SHARE_MODAL_KEYS.forEach(k => { if (o[k] !== undefined) state[k] = o[k]; });
+  // 还原区间筛选控件状态
+  document.querySelectorAll("#rangeBar button").forEach(b => b.classList.toggle("active", b.dataset.r === state.range));
+  const rf = document.getElementById("rFrom"), rt = document.getElementById("rTo");
+  if (state.range === "区间") { if (rf) rf.value = state.rFrom || ""; if (rt) rt.value = state.rTo || ""; }
+  if (o.aggFilter) { try { aggFilter = o.aggFilter; } catch(e){} }
+  render();
+  showShareRoBar();
+  // 弹窗级分享：还原对应弹窗
+  if (o.m === "agg") {
+    try {
+      if (o.kind === "store") openStore(o.storeId);
+      else openAgg(o.label, o.nameEnc, true);
+    } catch(e){ console.warn("agg share replay failed", e); }
+  } else if (o.m === "stage" && o.stageKey) {
+    try { openStage(o.stageKey); } catch(e){ console.warn("stage share replay failed", e); }
+  }
+}
