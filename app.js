@@ -96,12 +96,14 @@ function aggregate(plan, keyFn) {
     const k = keyFn(e);
     if (!map[k]) map[k] = { name: k, total: 0, done: 0, doing: 0, todo: 0 };
     map[k].total++;
+    if (s && s.total) { map[k].tT = (map[k].tT || 0) + s.total; map[k].tD = (map[k].tD || 0) + s.done; map[k].hasT = true; }
     if (status === 2) map[k].done++;
     else if (status === 1) map[k].doing++;
     else map[k].todo++;
   });
   const arr = Object.values(map);
-  arr.forEach(a => a.rate = a.total ? a.done / a.total * 100 : 0);
+  // 完成率 = 任务进度口径（已完成任务 ÷ 应完成任务），无明细时回退人数口径
+  arr.forEach(a => a.rate = a.hasT && a.tT ? a.tD / a.tT * 100 : (a.total ? a.done / a.total * 100 : 0));
   arr.sort((a, b) => b.rate - a.rate || b.total - a.total);
   return arr;
 }
@@ -169,14 +171,16 @@ function renderOverview() {
   const el = document.getElementById("main");
   const catCards = CORE_CATS.map(cat => {
     const plans = plansInRange(cat);
-    let emps = 0, done = 0;
+    let emps = 0, done = 0, tT = 0, tD = 0, hasT = false;
     plans.forEach(p => (p.emps || []).forEach(e => {
       if (statusOf(e) == null) return;
       const st = empStat(p, e);
+      if (st && st.total) { hasT = true; tT += st.total; tD += st.done; }
       emps++;
       if (st ? st.status === 2 : e.trainingStatus === 2) done++;
     }));
-    const rate = emps ? done / emps * 100 : 0;
+    // 完成率 = 任务进度口径（已完成任务 ÷ 应完成任务），无明细回退人数口径
+    const rate = hasT && tT ? tD / tT * 100 : (emps ? done / emps * 100 : 0);
     const latest = plans.slice(0, 5).map(p => {
       const st = empStat(p, p.emps[0] || {}) && null; // noop
       // 整体完成率优先用平台概述，否则按员工明细均摊
@@ -224,11 +228,18 @@ function renderCat() {
   const timeCard = `<div class="card"><div class="k">学习时间</div><div class="v" style="font-size:14px;line-height:2;text-align:left">开始：${esc(vFrom || "-")}<br>结束：${esc(vTo || "-")}</div></div>`;
 
   // 概述卡片
+  // 完成率：平台字段为0/缺失时，按任务进度（已完成任务÷应完成任务）兜底
+  let cardRate = pct(ov.percentageComplete);
+  if (!cardRate) {
+    let tT = 0, tD = 0, hasT = false;
+    (p.emps || []).forEach(e => { if (statusOf(e) == null) return; const st = empStat(p, e); if (st && st.total) { hasT = true; tT += st.total; tD += st.done; } });
+    if (hasT && tT) cardRate = tD / tT * 100;
+  }
   const cards = `
     <div class="cards">
       <div class="card"><div class="k">应学人数</div><div class="v">${ov.numberOfPersonsDueToComplete ?? (p.emps || []).length}</div></div>
       <div class="card"><div class="k">已完成</div><div class="v">${ov.numberOfPeopleCompleted ?? "-"}</div></div>
-      <div class="card"><div class="k">完成率</div><div class="v">${pct(ov.percentageComplete).toFixed(1) || 0}<small>%</small></div></div>
+      <div class="card"><div class="k">完成率</div><div class="v">${(cardRate || 0).toFixed(1)}<small>%</small></div></div>
       <div class="card"><div class="k">应学门店</div><div class="v">${ov.shouldTrainStoreCount ?? (p.storeStats || []).length}</div></div>
       <div class="card"><div class="k">已参训门店</div><div class="v">${ov.trainedStoreCount ?? "-"}</div></div>
       ${timeCard}
@@ -237,7 +248,19 @@ function renderCat() {
   // 阶段统计（行可点 -> 阶段学员明细）
   const stageRows = (p.stageStats || []).filter(s => stageInCycle(p, s.phaseName)).map((s, i) => {
     const key = s.phaseName;
-    return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td>${s.numberOfPersonsDueToComplete}</td><td>${s.uninitiatedNumber}</td><td>${s.numberOfPeopleInProgress}</td><td>${s.numberOfPeopleCompleted}</td><td>${barHtml(pct(s.phaseCompletionRate))}</td></tr>`;
+    // 完成率：平台字段为0/缺失时，按该阶段任务进度（已完成任务÷应完成任务）兜底
+    let sRate = pct(s.phaseCompletionRate);
+    if (!sRate) {
+      let tT = 0, tD = 0, hasT = false;
+      (p.emps || []).forEach(e => {
+        if (statusOf(e) == null) return;
+        const det = p.empDetails && p.empDetails[String(e.employeeId)];
+        const stg = det && det.stages && det.stages.find(x => (x.n || "") === key);
+        if (stg && stg.t) { stg.t.forEach(t => { tT++; if (t[2] === "W") tD++; }); hasT = true; }
+      });
+      if (hasT && tT) sRate = tD / tT * 100;
+    }
+    return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td>${s.numberOfPersonsDueToComplete}</td><td>${s.uninitiatedNumber}</td><td>${s.numberOfPeopleInProgress}</td><td>${s.numberOfPeopleCompleted}</td><td>${barHtml(sRate)}</td></tr>`;
   }).join("");
 
   // 二级
