@@ -265,8 +265,9 @@ function renderCat() {
       <h3>二级汇总</h3>
       <div class="subtabs">
         ${SUBS.map(s => `<button class="${state.sub === s ? "active" : ""}" onclick="state.sub='${s}';renderCat()">${s}</button>`).join("")}
+        ${state.sub === "全部" ? `<button class="btn" style="padding:5px 14px;font-size:12px;margin-left:8px" onclick="sharePng('all')">🖼 快照</button>` : ""}
       </div>
-      <div style="overflow-x:auto">${body}</div>
+      <div id="allSecBody" style="overflow-x:auto">${body}</div>
     </div>`;
 }
 
@@ -1198,12 +1199,31 @@ window.sharePng = async function (mode) {
     await window._loadHtml2canvas();
     const modal = document.getElementById("mask");
     const isModal = mode === "modal" && modal && modal.classList.contains("show");
-    const target = isModal ? modal.querySelector(".modal") : document.body;
-    const title = isModal ? ((modal.querySelector(".mhead h3") || {}).textContent || "学习明细") : ((document.querySelector("header h1") || {}).textContent || "学习看板");
+    let restore = null;
+    let target;
+    if (mode === "all") {
+      // 全部大表快照：只截表格本体，临时放开横向滚动让整表全部渲染
+      const box = document.getElementById("allSecBody");
+      target = box;
+      if (box) {
+        const tbl = box.querySelector("table");
+        const old = { ow: box.style.overflow, w: tbl && tbl.style.width };
+        box.style.overflow = "visible";
+        if (tbl) tbl.style.width = Math.max(tbl.scrollWidth, box.scrollWidth) + "px";
+        restore = () => { box.style.overflow = old.ow; if (tbl) tbl.style.width = old.w; };
+      }
+    } else {
+      target = isModal ? modal.querySelector(".modal") : document.body;
+    }
+    const title = mode === "all"
+      ? (((plansInRange(state.cat)[state.planIdx] || {}).planName || "学习看板") + " · 全体学习明细")
+      : isModal ? ((modal.querySelector(".mhead h3") || {}).textContent || "学习明细") : ((document.querySelector("header h1") || {}).textContent || "学习看板");
     const canvas = await html2canvas(target, {
       useCORS: true, backgroundColor: "#f2f4f8", scale: 2, logging: false,
+      windowWidth: target.scrollWidth || undefined, windowHeight: target.scrollHeight || undefined,
       ignoreElements: el => ["shareOverlay", "pngShareTip", "shareRoBar"].includes(el.id)
     });
+    if (restore) restore();
     const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
     // 优先复制到剪贴板：微信/聊天窗口直接 Ctrl+V 发送
     let copied = false;
