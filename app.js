@@ -385,7 +385,7 @@ function flatDetailTable(p, emps) {
 }
 
 function aggDetailRender(p, emps, title) {
-  document.getElementById("mTitle").textContent = title;
+  document.getElementById("mTitle").textContent = title + (p && p.startDate ? ` 【任务发布时间：${p.startDate}】` : "");
   document.getElementById("mBody").innerHTML = `
     <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${aggFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="aggFilter='${f}';aggReopen&&aggReopen()">${f}</button>`).join("")}
@@ -475,7 +475,7 @@ function renderStageModal() {
   const stageName = state.stageKey;
   const plans = plansInRange(state.cat);
   const p = plans[state.planIdx];
-  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + stageName + " · 学习明细";
+  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + stageName + " · 学习明细" + (p.startDate ? ` 【任务发布时间：${p.startDate}】` : "");
   let emps = (p.emps || []).filter(e => statusOf(e) != null);
   const allGroups = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
   const gset = state.dGroups, rset = state.dRegions;
