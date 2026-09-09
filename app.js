@@ -226,12 +226,12 @@ function renderCat() {
     </div>
     ${cards}
     ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况</div><table><tr><th>阶段</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
-    <div class="sec">
+    <div class="sec"${state.sub === "全部" ? ' style="margin-left:calc(50% - 50vw + 24px);margin-right:calc(50% - 50vw + 24px)"' : ""}>
       <h3>二级汇总</h3>
       <div class="subtabs">
         ${SUBS.map(s => `<button class="${state.sub === s ? "active" : ""}" onclick="state.sub='${s}';renderCat()">${s}</button>`).join("")}
       </div>
-      ${body}
+      <div style="overflow-x:auto">${body}</div>
     </div>`;
 }
 
