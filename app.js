@@ -312,7 +312,8 @@ function aggDetailTable(p, emps) {
         scoreStr = exams.map(t => scoreCell(t, false)).join("</div><div>");
       }
       const learnStr = `<div style="font-size:11px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">必修课 ${cnt(learn)}</div>`;
-      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div>${learnStr}</td>`;
+      const opsStr = `<div style="font-size:11px;color:${ops.length && ops.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">实操 ${cnt(ops)}</div>`;
+      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div>${learnStr}${opsStr}</td>`;
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center">${cnt(ops)}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
