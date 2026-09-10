@@ -93,6 +93,7 @@ tr.clickable:hover td:first-child{text-decoration:underline}
   <span class="gen" id="genTime"></span>
   <button id="shareViewBtn" onclick="openShareOverlay()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔗 分享本视图</button>
   <button onclick="sharePng()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🖼 分享图片</button>
+  <button id="updateBtn" onclick="manualUpdate()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔄 更新数据</button>
   <div class="rangebar" id="rangeBar">
     <button data-r="全部" class="active" onclick="setRange('全部')">全部</button>
     <button data-r="上月" onclick="setRange('上月')">上月</button>
@@ -115,5 +116,47 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 
 <script src="qrcode.min.js?v=14"></script>
 <script src="app.js?v=61"></script>
+<script>
+/* 手动更新：本地更新服务(localhost:8767) 抓数+推送 */
+const UPD_SVC = "http://localhost:8767";
+let updTimer = null;
+function updBtn(txt, dis) { const b = document.getElementById("updateBtn"); if (b) { b.textContent = txt; b.disabled = !!dis; b.style.opacity = dis ? ".6" : "1"; } }
+function updFail(msg) {
+  clearTimeout(updTimer); updBtn("🔄 更新数据", false);
+  alert(msg);
+}
+function manualUpdate() {
+  updBtn("⏳ 检查服务...", true);
+  fetch(UPD_SVC + "/ping", { method: "GET" }).then(r => r.json()).then(j => {
+    if (!j.ok) return updFail("更新服务未就绪，请先在电脑上双击「启动更新服务.bat」");
+    if (j.running) { pollStatus(); return; }
+    fetch(UPD_SVC + "/update", { method: "POST" }).then(r => r.json()).then(r2 => {
+      if (!r2.ok) return updFail("启动更新失败：" + (r2.msg || "未知"));
+      updBtn("⏳ 抓数中 约7分钟", true);
+      pollStatus();
+    }).catch(e => updFail("启动更新失败：" + e));
+  }).catch(() => updFail("连不上本机更新服务（localhost:8767）。\n请先在电脑上双击「启动更新服务.bat」，再点更新。"));
+}
+function pollStatus() {
+  clearTimeout(updTimer);
+  fetch(UPD_SVC + "/status").then(r => r.json()).then(j => {
+    if (j.running) {
+      updBtn("⏳ 更新中 " + (j.startedAt || ""), true);
+      updTimer = setTimeout(pollStatus, 10000);
+    } else if (j.lastOk === true) {
+      updBtn("✅ 已更新", false);
+      setTimeout(() => { location.reload(); }, 800);
+    } else if (j.lastOk === false) {
+      updFail("更新失败：" + (j.lastMsg || "详见更新服务日志"));
+    } else {
+      updBtn("🔄 更新数据", false);
+    }
+  }).catch(() => updFail("更新服务断开了，请重新启动「启动更新服务.bat」"));
+}
+/* 打开页面时顺带探一下服务，提示可用性（不打扰） */
+window.addEventListener("load", () => {
+  fetch(UPD_SVC + "/ping").then(r => r.json()).then(j => { if (j.ok && j.running) updBtn("⏳ 更新中 " + (j.startedAt || ""), true); }).catch(() => {});
+});
+</script>
 </body>
 </html>
