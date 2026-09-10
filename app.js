@@ -182,14 +182,13 @@ function renderOverview() {
     // 完成率 = 任务进度口径（已完成任务 ÷ 应完成任务），无明细回退人数口径
     const rate = hasT && tT ? tD / tT * 100 : (emps ? done / emps * 100 : 0);
     const latest = plans.slice(0, 5).map(p => {
-      const st = empStat(p, p.emps[0] || {}) && null; // noop
-      // 整体完成率优先用平台概述，否则按员工明细均摊
-      let ovRate = p.overview && p.overview.percentageComplete;
-      if (ovRate == null) {
-        let t = 0, d2 = 0;
-        (p.emps || []).forEach(e => { const s = empStat(p, e); if (s) { t += s.total; d2 += s.done; } });
-        ovRate = t ? (d2 / t * 100).toFixed(0) + "%" : "-";
-      }
+      // 整体完成率与卡片同口径：任务进度优先（平台字段为0时兜底）
+      let t = 0, d2 = 0;
+      (p.emps || []).forEach(e => { const s = empStat(p, e); if (s) { t += s.total; d2 += s.done; } });
+      let ovRate;
+      if (t) ovRate = (d2 / t * 100).toFixed(1) + "%";
+      else if (p.overview && p.overview.percentageComplete != null) ovRate = pct(p.overview.percentageComplete).toFixed(1) + "%";
+      else ovRate = "-";
       return `<tr><td>${esc(p.planName)}</td><td>${p.startDate || "-"}</td><td>${ovRate}</td></tr>`;
     }).join("") || `<tr><td colspan=3 class=empty>暂无计划</td></tr>`;
     return `<div class="sec">
