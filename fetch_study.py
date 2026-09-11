@@ -7,6 +7,13 @@
 import json, time, hashlib, random, string, urllib.request, urllib.parse, os, sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# 防 GBK 控制台编码崩溃（计划名可能含 \u2006 等特殊字符）
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # 计划名含这些关键词的，不入列表（测试/占位计划）
 PLAN_EXCLUDE = ["测试", "XX", "xx", "课前准备", "174期", "煲饭"]
 
