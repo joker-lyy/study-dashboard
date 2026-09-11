@@ -373,13 +373,13 @@ function aggDetailTable(p, emps) {
       const exams = sts.filter(t => t[1] === 4);
       // 必修课=网课(3)+实操课(8)：实操视频课（手握饭团等）同为强制学习，按必修口径统计
       const learn = sts.filter(t => t[1] === 3 || t[1] === 8);
-      let scoreStr = "—";
+      let scoreStr = "";
       if (exams.length) {
-        // 多科竖排，每科一行，避免横向超出格子
-        scoreStr = exams.map(t => scoreCell(t, false)).join("</div><div>");
+        // 多科竖排，每科一行，避免横向超出格子；无考试则不显示该行
+        scoreStr = `<div>${exams.map(t => scoreCell(t, false)).join("</div><div>")}</div>`;
       }
-      const learnStr = `<div style="font-size:11px;color:${learn.length && learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">必修课 ${cnt(learn)}</div>`;
-      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div><div>${scoreStr}</div>${learnStr}</td>`;
+      const learnStr = learn.length ? `<div style="font-size:11px;color:${learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">必修课 ${cnt(learn)}</div>` : "";
+      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div>${scoreStr}${learnStr}</td>`;
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center;white-space:nowrap">${attCnt}/${stageNames.length}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
