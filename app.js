@@ -59,6 +59,8 @@ function barHtml(v) {
   const cls = v >= 80 ? "g" : v >= 40 ? "o" : "r";
   return `<span class="bar"><i class="${cls}" style="width:${Math.min(v, 100)}%"></i></span>${v.toFixed(1)}%`;
 }
+// 考核类任务：考试(type4) 或 带分数的作业/表单（如「上传拼盘实操考核图片」平台也打分）
+function isExamT(t) { return t && (t[1] === 4 || (t[3] != null && t[3] !== "-" && !isNaN(+t[3]))); }
 // 单科考试分数展示：未考红字、0分红字、未过红字、<80红字
 function scoreCell(t, suffix) {
   const suf = suffix === false ? "" : "分";
@@ -370,7 +372,7 @@ function aggDetailTable(p, emps) {
       if (leaveOf(sn, e)) att = `<span style="font-size:11px;color:var(--t2)">请假</span>`;
       else if (sts.some(t => t[5] && t[5] !== "-")) att = `<span style="font-size:11px;font-weight:600;color:var(--green)">已签到</span>`;
       // 分数：该天全部考核，多科/隔开；未考=有考试未完成；—=无考试；红=未达80
-      const exams = sts.filter(t => t[1] === 4);
+      const exams = sts.filter(isExamT);
       // 必修课=网课(3)+实操课(8)：实操视频课（手握饭团等）同为强制学习，按必修口径统计
       const learn = sts.filter(t => t[1] === 3 || t[1] === 8);
       let scoreStr = "";
@@ -399,7 +401,7 @@ function flatDetailTable(p, emps) {
   const dueDays = stageNames.length;
   const rows = emps.map(e => {
     const ts = planTasks(p, e);
-    const exams = ts.filter(t => t[1] === 4);
+    const exams = ts.filter(isExamT);
     const stat = empStat(p, e);
     const det = p.empDetails && p.empDetails[String(e.employeeId)];
     const att = stageNames.filter(sn => {
@@ -413,7 +415,7 @@ function flatDetailTable(p, emps) {
       const [name, type, st, score, isPass] = t;
       const ok = st === "W";
       let extra = "";
-      if (type === 4) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
+      if (type === 4 || isExamT(t)) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
       return `<div style="padding:1px 0;color:${ok ? "var(--t1)" : "#e64340"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
     const fins = ts.filter(t => t[2] === "W" && t[5]).map(t => t[5]).sort();
@@ -547,7 +549,7 @@ function renderStageModal() {
     const stage = stageOf(e);
     const ts = stage ? stage.t : [];
     // 必修课=网课(3)+实操课(8)：实操视频课同为强制学习；作业/表单(5/7)单列
-    const learn = ts.filter(t => t[1] === 3 || t[1] === 8), exams = ts.filter(t => t[1] === 4), ops = ts.filter(t => [5, 7].includes(t[1]));
+    const learn = ts.filter(t => t[1] === 3 || t[1] === 8), exams = ts.filter(isExamT), ops = ts.filter(t => [5, 7].includes(t[1]));
     const cnt = a => a.length ? `${a.filter(t => t[2] === "W").length}/${a.length}` : "—";
     // 分数：该阶段全部考核，多科以/隔开；未考=有考试未完成；—=无考试；红=未达80
     let scoreStr = "—";
@@ -562,9 +564,9 @@ function renderStageModal() {
       const [name, type, st, score, isPass] = t;
       const ok = st === "W";
       let extra = "", bad = !ok;
-      if (type === 4) {
+      if (type === 4 || isExamT(t)) {
         if (score !== "-" && score != null && !isNaN(+score)) { extra = `（${score}分${isPass === "否" ? "，未过" : ""}）`; if (+score < 80 || +score === 0 || isPass === "否") bad = true; }
-        else extra = "（未考）";
+        else if (type === 4) extra = "（未考）";
       }
       return `<div style="padding:1px 0;color:${bad ? "#e64340" : "var(--t1)"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
