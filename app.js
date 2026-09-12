@@ -110,17 +110,27 @@ function aggregate(plan, keyFn) {
   return arr;
 }
 
+// 手动分类覆盖（本地保存，重抓数据不丢失）：{planId: "线上线下培训"|"其他"}
+const CAT_OV_KEY = "study_cat_override_v1";
+let CAT_OV = (() => { try { return JSON.parse(localStorage.getItem(CAT_OV_KEY)) || {}; } catch (e) { return {}; } })();
+function effCat(p) { return CAT_OV[p.planId] || p.category; }
+function moveCat(planId, to) {
+  if (to) CAT_OV[planId] = to; else delete CAT_OV[planId];
+  try { localStorage.setItem(CAT_OV_KEY, JSON.stringify(CAT_OV)); } catch (e) {}
+  state.planIdx = 0;
+  render();
+}
 function isSurvey(p) { return SURVEY_RE.test(p.planName || ""); }
 const PUB_GROUPS = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
 function plansOf(cat, gOverride) {
-  let arr = DATA.plans.filter(p => p.category === cat && !isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
+  let arr = DATA.plans.filter(p => effCat(p) === cat && !isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
   // 其他 Tab：只保留四个组发布的计划，支持组别导航筛选
   if (cat === "其他") { const g = gOverride || state.gFilter; arr = arr.filter(p => p.pubGroup && (g === "全部" || p.pubGroup === g)); }
   return arr;
 }
 function setGFilter(v) { state.gFilter = v; state.planIdx = 0; render(); }
 function surveysOf() {
-  return DATA.plans.filter(p => p.category === "线上线下培训" && isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
+  return DATA.plans.filter(p => effCat(p) === "线上线下培训" && isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
 }
 
 /* ---------- 右上角区间筛选（按计划开始日期 / 评估提交时间） ---------- */
@@ -268,6 +278,10 @@ function renderCat() {
 
   const opts = plans.map((x, i) => `<option value="${i}" ${i === state.planIdx ? "selected" : ""}>${esc(x.planName)}（${x.startDate || "?"}）</option>`).join("");
   const multiBox = `<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap"><input type="checkbox" onchange="state.multi=this.checked;state.multiSel=[];renderCat()"> 多选汇总</label>`;
+  const mvSel = `<select title="移动该课程到其他板块" style="max-width:150px" onchange="moveCat('${p.planId}', this.value)">
+      <option value="" ${!CAT_OV[p.planId] ? "selected" : ""}>📁 ${esc(p.category)}</option>
+      ${["线上线下培训", "其他"].filter(c => c !== p.category).map(c => `<option value="${c}" ${CAT_OV[p.planId] === c ? "selected" : ""}>移到「${c}」</option>`).join("")}
+    </select>`;
   const ov = p.overview || {};
 
   // 学习时间：优先平台有效期（"起 至 止"），否则计划起止日期，两行显示
@@ -344,6 +358,7 @@ function renderCat() {
     <div class="planbar">
       <select onchange="state.planIdx=+this.value;renderCat()">${opts}</select>
       ${multiBox}
+      ${mvSel}
       <span class="badge b-gray">学员 ${(p.emps || []).length} 人</span>
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}
     </div>
