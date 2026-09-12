@@ -147,6 +147,51 @@ function dateInrange(dateStr) {
   return true;
 }
 function plansInRange(cat, gOverride) { return plansOf(cat, gOverride).filter(p => dateInrange(p.startDate)); }
+
+// 多选课程汇总视图
+function renderMulti(plans, gnav) {
+  const el = document.getElementById("main");
+  const sel = state.multiSel || [];
+  const chosen = sel.length ? sel : plans.map((_, i) => i);
+  const rows = plans.map((p, i) => {
+    const ov = p.overview || {};
+    let T = 0, D = 0, esum = 0, en = 0;
+    (p.emps || []).forEach(e => {
+      const st = empStat(p, e);
+      if (st && st.total) { T += st.total; D += st.done; }
+      const det = p.empDetails && p.empDetails[String(e.employeeId)];
+      ((det && det.stages) || []).forEach(sg => (sg.t || []).forEach(t => {
+        if (t[2] === "W" && t[3] != null && t[3] !== "-" && !isNaN(+t[3])) { esum += +t[3]; en++; }
+      }));
+    });
+    return { i, p, ov, emps: (p.emps || []).length, T, D, rate: T ? D / T * 100 : null, esum, en, should: ov.shouldTrainStoreCount || 0, trained: ov.trainedStoreCount || 0 };
+  });
+  const c = rows.filter(r => chosen.includes(r.i));
+  const S = a => a.reduce((x, y) => x + y, 0);
+  const totT = S(c.map(r => r.T)), totD = S(c.map(r => r.D));
+  const totE = S(c.map(r => r.esum)), totN = S(c.map(r => r.en));
+  const cards = `
+    <div class="cards">
+      <div class="card"><div class="k">课程数</div><div class="v">${c.length}<small> 门</small></div></div>
+      <div class="card"><div class="k">应学人数</div><div class="v">${S(c.map(r => r.ov.numberOfPersonsDueToComplete ?? r.emps))}</div></div>
+      <div class="card"><div class="k">已完成</div><div class="v">${S(c.map(r => r.ov.numberOfPeopleCompleted ?? 0))}</div></div>
+      <div class="card"><div class="k">完成率</div><div class="v">${totT ? (totD / totT * 100).toFixed(1) : "0.0"}<small>%</small></div></div>
+      <div class="card"><div class="k">考试平均分</div><div class="v">${totN ? (totE / totN).toFixed(1) : "-"}</div></div>
+      <div class="card"><div class="k">应学门店</div><div class="v">${S(c.map(r => r.should))}</div></div>
+      <div class="card"><div class="k">已参训门店</div><div class="v">${S(c.map(r => r.trained))}</div></div>
+      <div class="card"><div class="k">任务进度</div><div class="v" style="font-size:16px;line-height:2.4">${totD.toLocaleString()} / ${totT.toLocaleString()}</div></div>
+    </div>`;
+  const tbl = c.map(r => `<tr><td style="text-align:left">${esc(r.p.planName)}</td><td>${r.ov.numberOfPersonsDueToComplete ?? r.emps}</td><td>${r.ov.numberOfPeopleCompleted ?? "-"}</td><td>${r.rate != null ? barHtml(r.rate) : "-"}</td><td>${r.en ? (r.esum / r.en).toFixed(1) : "-"}</td><td>${r.trained}/${r.should}</td></tr>`).join("");
+  el.innerHTML = `${gnav}
+    <div class="planbar" style="flex-wrap:wrap;align-items:flex-start">
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap"><input type="checkbox" checked onchange="state.multi=this.checked;state.multiSel=[];renderCat()"> 多选汇总</label>
+      <select multiple size="8" style="min-width:420px" onchange="state.multiSel=[...this.selectedOptions].map(o=>+o.value);renderMulti(plansInRange(state.cat), '')">${plans.map((x, i) => `<option value="${i}" ${chosen.includes(i) ? "selected" : ""}>${esc(x.planName)}（${x.startDate || "?"}）</option>`).join("")}</select>
+      <span class="badge b-gray">已选 ${sel.length || plans.length} 门${sel.length ? "" : "（默认全部）"}</span>
+    </div>
+    ${cards}
+    <div class="sec"><h3>所选课程明细</h3><table><tr><th>课程</th><th>应学人数</th><th>已完成</th><th>完成率</th><th>考试平均分</th><th>参训门店</th></tr>${tbl}</table></div>`;
+}
+
 function setRange(r) {
   state.range = r;
   if (r === "区间") {
@@ -217,10 +262,12 @@ function renderCat() {
     }).join("")}</div>` : "";
   const plans = plansInRange(state.cat);
   if (!plans.length) { el.innerHTML = gnav + `<div class="sec empty">该组别暂无计划数据</div>`; return; }
+  if (state.multi) { renderMulti(plans, gnav); return; }
   state.planIdx = Math.min(state.planIdx, plans.length - 1);
   const p = plans[state.planIdx];
 
   const opts = plans.map((x, i) => `<option value="${i}" ${i === state.planIdx ? "selected" : ""}>${esc(x.planName)}（${x.startDate || "?"}）</option>`).join("");
+  const multiBox = `<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap"><input type="checkbox" onchange="state.multi=this.checked;state.multiSel=[];renderCat()"> 多选汇总</label>`;
   const ov = p.overview || {};
 
   // 学习时间：优先平台有效期（"起 至 止"），否则计划起止日期，两行显示
@@ -295,6 +342,7 @@ function renderCat() {
     ${gnav}
     <div class="planbar">
       <select onchange="state.planIdx=+this.value;renderCat()">${opts}</select>
+      ${multiBox}
       <span class="badge b-gray">学员 ${(p.emps || []).length} 人</span>
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}
     </div>
