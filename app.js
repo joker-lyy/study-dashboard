@@ -229,12 +229,13 @@ function renderCat() {
   const timeCard = `<div class="card"><div class="k">学习时间</div><div class="v" style="font-size:14px;line-height:2;text-align:left">开始：${esc(vFrom || "-")}<br>结束：${esc(vTo || "-")}</div></div>`;
 
   // 概述卡片
-  // 完成率：平台字段为0/缺失时，按任务进度（已完成任务÷应完成任务）兜底
-  let cardRate = pct(ov.percentageComplete);
-  if (!cardRate) {
+  // 完成率：统一任务进度口径（已完成任务÷应完成任务）；无明细才回退平台字段
+  let cardRate = 0;
+  {
     let tT = 0, tD = 0, hasT = false;
     (p.emps || []).forEach(e => { if (statusOf(e) == null) return; const st = empStat(p, e); if (st && st.total) { hasT = true; tT += st.total; tD += st.done; } });
     if (hasT && tT) cardRate = tD / tT * 100;
+    else cardRate = pct(ov.percentageComplete) || 0;
   }
   const cards = `
     <div class="cards">
