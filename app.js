@@ -237,11 +237,25 @@ function renderCat() {
     if (hasT && tT) cardRate = tD / tT * 100;
     else cardRate = pct(ov.percentageComplete) || 0;
   }
+  // 考试平均分（含带分数的考核类任务，如上传图片打分）
+  let examAvg = null;
+  {
+    let sum = 0, n = 0;
+    (p.emps || []).forEach(e => {
+      const det = p.empDetails && p.empDetails[String(e.employeeId)];
+      if (!det) return;
+      (det.stages || []).forEach(sg => (sg.t || []).forEach(t => {
+        if (t[2] === "W" && t[3] !== undefined && t[3] !== "-" && t[3] !== null && !isNaN(+t[3])) { sum += +t[3]; n++; }
+      }));
+    });
+    examAvg = n ? (sum / n).toFixed(1) : null;
+  }
   const cards = `
     <div class="cards">
       <div class="card"><div class="k">应学人数</div><div class="v">${ov.numberOfPersonsDueToComplete ?? (p.emps || []).length}</div></div>
       <div class="card"><div class="k">已完成</div><div class="v">${ov.numberOfPeopleCompleted ?? "-"}</div></div>
       <div class="card"><div class="k">完成率</div><div class="v">${(cardRate || 0).toFixed(1)}<small>%</small></div></div>
+      <div class="card"><div class="k">考试平均分</div><div class="v">${examAvg ?? "-"}</div></div>
       <div class="card"><div class="k">应学门店</div><div class="v">${ov.shouldTrainStoreCount ?? (p.storeStats || []).length}</div></div>
       <div class="card"><div class="k">已参训门店</div><div class="v">${ov.trainedStoreCount ?? "-"}</div></div>
       ${timeCard}
