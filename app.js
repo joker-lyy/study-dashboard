@@ -181,7 +181,7 @@ function renderMulti(plans, gnav) {
       <div class="card"><div class="k">已参训门店</div><div class="v">${S(c.map(r => r.trained))}</div></div>
       <div class="card"><div class="k">任务进度</div><div class="v" style="font-size:16px;line-height:2.4">${totD.toLocaleString()} / ${totT.toLocaleString()}</div></div>
     </div>`;
-  const tbl = c.map(r => `<tr><td style="text-align:left">${esc(r.p.planName)}</td><td>${r.ov.numberOfPersonsDueToComplete ?? r.emps}</td><td>${r.ov.numberOfPeopleCompleted ?? "-"}</td><td>${r.rate != null ? barHtml(r.rate) : "-"}</td><td>${r.en ? (r.esum / r.en).toFixed(1) : "-"}</td><td>${r.trained}/${r.should}</td></tr>`).join("");
+  const tbl = c.map(r => `<tr><td style="text-align:left">${esc(r.p.planName)}</td><td>${r.ov.numberOfPersonsDueToComplete ?? r.emps}</td><td>${r.ov.numberOfPeopleCompleted ?? "-"}</td><td>${r.rate != null ? barHtml(r.rate) : "-"}</td><td>${r.en ? (r.esum / r.en).toFixed(1) : "-"}</td><td>${r.trained}/${r.should}</td><td>${r.should ? (r.trained / r.should * 100).toFixed(1) + "%" : "-"}</td></tr>`).join("");
   el.innerHTML = `${gnav}
     <div class="planbar" style="flex-wrap:wrap;align-items:flex-start">
       <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap"><input type="checkbox" checked onchange="state.multi=this.checked;state.multiSel=[];renderCat()"> 多选汇总</label>
@@ -189,7 +189,7 @@ function renderMulti(plans, gnav) {
       <span class="badge b-gray">已选 ${sel.length || plans.length} 门${sel.length ? "" : "（默认全部）"}</span>
     </div>
     ${cards}
-    <div class="sec"><h3>所选课程明细</h3><table><tr><th>课程</th><th>应学人数</th><th>已完成</th><th>完成率</th><th>考试平均分</th><th>参训门店</th></tr>${tbl}</table></div>`;
+    <div class="sec"><h3>所选课程明细</h3><table><tr><th>课程</th><th>应学人数</th><th>已完成</th><th>完成率</th><th>考试平均分</th><th>参训门店</th><th>参与率</th></tr>${tbl}</table></div>`;
 }
 
 function setRange(r) {
@@ -305,6 +305,7 @@ function renderCat() {
       <div class="card"><div class="k">考试平均分</div><div class="v">${examAvg ?? "-"}</div></div>
       <div class="card"><div class="k">应学门店</div><div class="v">${ov.shouldTrainStoreCount ?? (p.storeStats || []).length}</div></div>
       <div class="card"><div class="k">已参训门店</div><div class="v">${ov.trainedStoreCount ?? "-"}</div></div>
+      <div class="card"><div class="k">参与率</div><div class="v">${ov.shouldTrainStoreCount ? ((ov.trainedStoreCount || 0) / ov.shouldTrainStoreCount * 100).toFixed(1) : "-"}<small>%</small></div></div>
       ${timeCard}
     </div>`;
 
