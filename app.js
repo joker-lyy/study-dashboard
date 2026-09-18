@@ -158,6 +158,19 @@ function dateInrange(dateStr) {
 }
 function plansInRange(cat, gOverride) { return plansOf(cat, gOverride).filter(p => dateInrange(p.startDate)); }
 
+// 默认状态校准：高亮按钮与 state.range 一致，日期输入预填「本月1日 ~ 今天」
+// fix：此前 HTML 把 active 写死在「全部」，而 state.range 默认「本月」，色块与实际数据口径对不上造成误会
+function initRangeBar() {
+  document.querySelectorAll("#rangeBar button").forEach(b => b.classList.toggle("active", b.dataset.r === state.range));
+  const rf = document.getElementById("rFrom"), rt = document.getElementById("rTo");
+  const n = new Date();
+  const today = fmtLocal(n);
+  const first = fmtLocal(new Date(n.getFullYear(), n.getMonth(), 1));
+  if (rf && !rf.value) rf.value = first;
+  if (rt && !rt.value) rt.value = today;
+}
+initRangeBar();
+
 // 多选课程汇总视图
 function renderMulti(plans, gnav) {
   const el = document.getElementById("main");
@@ -208,6 +221,13 @@ function setRange(r) {
     state.rFrom = document.getElementById("rFrom").value || null;
     state.rTo = document.getElementById("rTo").value || null;
     if (!state.rFrom && !state.rTo) return;
+  }
+  // 点「本月/上月」时把日期输入框同步成对应区间，保证输入框与高亮按钮口径一致
+  if (r === "本月" || r === "上月") {
+    const [f, t] = monthRange(r === "本月" ? 0 : -1);
+    const rf = document.getElementById("rFrom"), rt = document.getElementById("rTo");
+    if (rf) rf.value = f;
+    if (rt) rt.value = t;
   }
   state.planIdx = 0;
   document.querySelectorAll("#rangeBar button").forEach(b => b.classList.toggle("active", b.dataset.r === r));

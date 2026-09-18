@@ -95,9 +95,9 @@ tr.clickable:hover td:first-child{text-decoration:underline}
   <button onclick="sharePng()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🖼 分享图片</button>
   <button id="updateBtn" onclick="manualUpdate()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔄 更新数据</button>
   <div class="rangebar" id="rangeBar">
-    <button data-r="全部" class="active" onclick="setRange('全部')">全部</button>
+    <button data-r="全部" onclick="setRange('全部')">全部</button>
     <button data-r="上月" onclick="setRange('上月')">上月</button>
-    <button data-r="本月" onclick="setRange('本月')">本月</button>
+    <button data-r="本月" class="active" onclick="setRange('本月')">本月</button>
     <input type="date" id="rFrom" onchange="setRange('区间')"><span class="sep">至</span>
     <input type="date" id="rTo" onchange="setRange('区间')">
   </div>
@@ -115,7 +115,7 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 </div>
 
 <script src="qrcode.min.js?v=14"></script>
-<script src="app.js?v=69"></script>
+<script src="app.js?v=70"></script>
 <script>
 /* 手动更新：本地更新服务(localhost:8767) 抓数+推送 */
 const UPD_SVC = "http://localhost:8767";
