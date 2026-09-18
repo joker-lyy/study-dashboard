@@ -1566,7 +1566,9 @@ function render() {
     const ps = (DATA.plans || []).filter(p => p.category === c);
     return ps.some(p => (p.emps || []).length > 0 || (p.storeStats || []).length > 0);
   });
-  const tabs = [["概述", ""], ...visibleCats.map(c => [c, ""]), ["直营学习明细", ""], ["评价管理", ""], ["离职管理档案", ""]];
+  // 「其他」分类垫底（用户拍板：直营学习明细排在「其他」前面），其余分类保持原顺序
+  const catsSorted = [...visibleCats.filter(c => c !== "其他"), ...(visibleCats.includes("其他") ? ["其他"] : [])];
+  const tabs = [["概述", ""], ...catsSorted.map(c => [c, ""]), ["直营学习明细", ""], ["评价管理", ""], ["离职管理档案", ""]];
   document.getElementById("mainTabs").innerHTML = tabs.map(([t]) => {
     let n;
     if (t === "概述" || t === "评价管理" || t === "离职管理档案") n = "";
