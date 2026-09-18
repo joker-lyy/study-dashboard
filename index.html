@@ -115,7 +115,7 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 </div>
 
 <script src="qrcode.min.js?v=14"></script>
-<script src="app.js?v=72"></script>
+<script src="app.js?v=73"></script>
 <script>
 /* 手动更新：本地更新服务(localhost:8767) 抓数+推送 */
 const UPD_SVC = "http://localhost:8767";
@@ -125,17 +125,18 @@ function updFail(msg) {
   clearTimeout(updTimer); updBtn("🔄 更新数据", false);
   alert(msg);
 }
+function wakeSvc(){ try{ return fetch("http://localhost:8766/wake?board=study", {cache:"no-store"}).catch(() => {}); }catch(e){ return Promise.resolve(); } }
 function manualUpdate() {
   updBtn("⏳ 检查服务...", true);
-  fetch(UPD_SVC + "/ping", { method: "GET" }).then(r => r.json()).then(j => {
-    if (!j.ok) return updFail("更新服务未就绪，请先在电脑上双击「启动更新服务.bat」");
+  wakeSvc().then(() => fetch(UPD_SVC + "/ping", { method: "GET" })).then(r => r.json()).then(j => {
+    if (!j.ok) return updFail("本机更新服务没能起来，请双击一次桌面/文件夹里的「启动看板.vbs」，再点更新");
     if (j.running) { pollStatus(); return; }
     fetch(UPD_SVC + "/update", { method: "POST" }).then(r => r.json()).then(r2 => {
       if (!r2.ok) return updFail("启动更新失败：" + (r2.msg || "未知"));
       updBtn("⏳ 抓数中 约7分钟", true);
       pollStatus();
     }).catch(e => updFail("启动更新失败：" + e));
-  }).catch(() => updFail("连不上本机更新服务（localhost:8767）。\n请先在电脑上双击「启动更新服务.bat」，再点更新。"));
+  }).catch(() => updFail("连不上本机更新服务（localhost:8767）。\n多半是服务刚空转退出，看板管家会自动叫醒它 —— 等 3 秒再点一次即可。"));
 }
 function pollStatus() {
   clearTimeout(updTimer);
@@ -151,12 +152,29 @@ function pollStatus() {
     } else {
       updBtn("🔄 更新数据", false);
     }
-  }).catch(() => updFail("更新服务断开了，请重新启动「启动更新服务.bat」"));
+  }).catch(() => updFail("更新服务断开了。它会在空闲时自动退出，双击一次「启动看板.vbs」可立即恢复（约 3 秒）"));
 }
 /* 打开页面时顺带探一下服务，提示可用性（不打扰） */
 window.addEventListener("load", () => {
   fetch(UPD_SVC + "/ping").then(r => r.json()).then(j => { if (j.ok && j.running) updBtn("⏳ 更新中 " + (j.startedAt || ""), true); }).catch(() => {});
 });
+</script>
+<!-- 看板心跳 / 自动切到本机服务版
+     ① 直接双击本文件（file://）打开 → 先叫醒本机服务，再自动切到 http://localhost:8767/index.html
+     ② 之后每 25 秒上报一次心跳；关掉页面约 3 分钟后服务自动退出，后台不留进程 -->
+<script>
+(function(){
+  var P = 8767, BOARD = "study";
+  if (location.protocol === "file:") {
+    try{
+      fetch("http://localhost:8766/wake?board=" + BOARD, {cache:"no-store"})
+        .then(function(){ location.replace("http://localhost:" + P + "/index.html"); })
+        .catch(function(){ location.href = "http://localhost:" + P + "/index.html"; });
+    }catch(e){ location.href = "http://localhost:" + P + "/index.html"; }
+  }
+  function beat(){ try{ fetch("http://localhost:" + P + "/ping?hb=" + Date.now(), {cache:"no-store"}).catch(function(){}); }catch(e){} }
+  beat(); setInterval(beat, 25000);
+})();
 </script>
 </body>
 </html>

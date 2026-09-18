@@ -110,13 +110,53 @@ function aggregate(plan, keyFn) {
   return arr;
 }
 
-// 手动分类覆盖（本地保存，重抓数据不丢失）：{planId: "线上线下培训"|"其他"}
+// 手动分类覆盖（2026-09-18 升级：三处持久化，不再只靠 localStorage）
+// ① localStorage（即时/离线） ② 本机更新服务 data/cat_overrides.json（写入即生效）
+// ③ 随更新推送进仓库 → 线上静态文件（跨设备/清缓存兜底）
+// 读取时合并：静态文件、本机服务的记录会覆盖补齐 localStorage 缺的部分
 const CAT_OV_KEY = "study_cat_override_v1";
 let CAT_OV = (() => { try { return JSON.parse(localStorage.getItem(CAT_OV_KEY)) || {}; } catch (e) { return {}; } })();
 function effCat(p) { return CAT_OV[p.planId] || p.category; }
+const CAT_OV_SVC = "http://localhost:8767/api/cat_overrides";
+function mergeCatOv(map) {
+  if (!map || typeof map !== "object") return false;
+  const merged = { ...CAT_OV, ...Object.fromEntries(Object.entries(map).filter(([k, v]) => k && v)) };
+  if (JSON.stringify(merged) === JSON.stringify(CAT_OV)) return false;
+  CAT_OV = merged;
+  try { localStorage.setItem(CAT_OV_KEY, JSON.stringify(CAT_OV)); } catch (e) {}
+  return true;
+}
+function hydrateCatOv() {
+  // 仓库静态文件（跨设备兜底）
+  fetch("data/cat_overrides.json?t=" + Date.now()).then(r => r.ok ? r.json() : null).then(m => { if (mergeCatOv(m)) render(); }).catch(() => {});
+  // 本机更新服务（最新写入）
+  fetch(CAT_OV_SVC + "?t=" + Date.now()).then(r => r.ok ? r.json() : null).then(d => {
+    if (d && d.ok && d.overrides && mergeCatOv(d.overrides)) render();
+  }).catch(() => {});
+}
+let __catToastT = null;
+function catToast() {
+  let t = document.getElementById("catToast");
+  if (!t) {
+    t = document.createElement("div"); t.id = "catToast";
+    t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--nav);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25)";
+    document.body.appendChild(t);
+  }
+  t.textContent = "✓ 已保存，刷新不会丢（线上同步随下次更新数据）";
+  t.style.opacity = "1";
+  clearTimeout(__catToastT);
+  __catToastT = setTimeout(() => { t.style.opacity = "0"; }, 2000);
+}
+function saveCatOv() {
+  try { localStorage.setItem(CAT_OV_KEY, JSON.stringify(CAT_OV)); } catch (e) {}
+  try {
+    fetch(CAT_OV_SVC, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ overrides: CAT_OV }) }).catch(() => {});
+  } catch (e) {}
+  catToast();
+}
 function moveCat(planId, to) {
   if (to) CAT_OV[planId] = to; else delete CAT_OV[planId];
-  try { localStorage.setItem(CAT_OV_KEY, JSON.stringify(CAT_OV)); } catch (e) {}
+  saveCatOv();
   state.planIdx = 0;
   render();
 }
@@ -1217,6 +1257,7 @@ fetch("data/data.json?v=" + Date.now()).then(r => r.json()).then(d => {
   document.getElementById("genTime").textContent = "数据更新于 " + d.generatedAt;
   render();
   if (typeof applyShareView === "function") applyShareView();
+  hydrateCatOv(); // 拉取落盘的分类覆盖，防止 localStorage 被清/换源后丢失
 }).catch(e => {
   document.getElementById("main").innerHTML = `<div class="sec empty">数据加载失败：${esc(e)}<br>请先运行 fetch_study.py，并用「启动看板.bat」打开</div>`;
 });
