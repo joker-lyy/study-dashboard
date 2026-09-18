@@ -72,6 +72,43 @@ function scoreCell(t, suffix) {
 }
 function esc(s) { return (s == null ? "" : String(s)).replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c])); }
 
+/* ---------- 阶段完成口径（2026-09-18 Rain 定稿）----------
+   完成率 = (必修课完成项数 + 考试合格科数) ÷ (必修课应完成项数 + 考试应完成科数)
+   · 必修课 = 网课(3)/实操课(8)，完成 = 任务状态 W
+   · 考核类 = 考试(type4) 或 平台要打分/阅卷的任务（有阅卷结论或带分数）——
+     含「上传考核截图」这类作业，平台判分后才算完成
+   · 考核合格 = 已完成(W) 且 未被判「否」 且（有分数时 ≥80）；「待阅卷」不算合格
+   · 无判分的普通作业/表单(5/7)只在明细里展示，不计入完成率
+   ⚠️ 平台 stageStatistics 的已完成/完成率与真实任务数据不符（182期第四天平台报
+   100%，实际全员截图待阅卷）→ 有员工明细时一律按真实任务口径重算。 */
+function isGradedT(t) {
+  return t && (t[1] === 4 || (t[4] != null && t[4] !== "-") ||
+    (t[3] != null && t[3] !== "-" && !isNaN(+t[3])));
+}
+function examPassT(t) {
+  if (!t || t[2] !== "W" || t[4] === "否") return false;
+  const n = +t[3];
+  if (t[3] != null && t[3] !== "-" && !isNaN(n)) return n >= 80;
+  return true;
+}
+function stageTasksOf(p, e, stageName) {
+  const det = p.empDetails && p.empDetails[String(e.employeeId)];
+  const stg = det && (det.stages || []).find(s => (s.n || "") === stageName);
+  return { det, stg, ts: (stg && stg.t) || [] };
+}
+// 单学员单阶段「需完成项」合计 {total, done}（必修 + 考核按项计，其余类型不计）
+function stageRequired(p, e, stageName) {
+  const { det, stg, ts } = stageTasksOf(p, e, stageName);
+  let total = 0, done = 0;
+  ts.forEach(t => {
+    if (isGradedT(t)) { total++; if (examPassT(t)) done++; }
+    else if (t[1] === 3 || t[1] === 8) { total++; if (t[2] === "W") done++; }
+  });
+  // 该阶段只有普通作业/表单（无必修无考核）→ 退回全部任务口径，保证能归档状态
+  if (!total) { total = ts.length; done = ts.filter(t => t[2] === "W").length; }
+  return { total, done, hasStage: !!det && !!stg, hasEmp: !!det };
+}
+
 // 把学员的区域链路 "总经办/加盟服务部/新店运营组/刘浩区域" 拆出层级
 function orgParts(emp) {
   const s = emp.organizeNames || emp.storeNames || "";
@@ -400,21 +437,26 @@ function renderCat() {
     </div>`;
 
   // 阶段统计（行可点 -> 阶段学员明细）
+  // ⚠️ 平台的 stageStatistics 与真实任务数据严重不符（182期第四天平台报「25人已完成/100%」，
+  // 实际全员拼盘截图还是「待阅卷」）→ 有员工明细时一律按真实任务口径重算。
   const stageRows = (p.stageStats || []).filter(s => stageInCycle(p, s.phaseName)).map((s, i) => {
     const key = s.phaseName;
-    // 完成率：平台字段为0/缺失时，按该阶段任务进度（已完成任务÷应完成任务）兜底
+    let todo = 0, doing = 0, doneN = 0, rT = 0, rD = 0, nDet = 0;
+    (p.emps || []).forEach(e => {
+      if (statusOf(e) == null) return;
+      const r = stageRequired(p, e, key);
+      if (!r.hasEmp) return;              // 该学员无明细 → 退回平台数
+      nDet++;
+      rT += r.total; rD += r.done;
+      if (!r.hasStage || !r.total) { todo++; return; }  // 该阶段无任务 → 未开始
+      if (r.done >= r.total) doneN++;
+      else if (r.done > 0) doing++;
+      else todo++;
+    });
     let sRate = pct(s.phaseCompletionRate);
-    if (!sRate) {
-      let tT = 0, tD = 0, hasT = false;
-      (p.emps || []).forEach(e => {
-        if (statusOf(e) == null) return;
-        const det = p.empDetails && p.empDetails[String(e.employeeId)];
-        const stg = det && det.stages && det.stages.find(x => (x.n || "") === key);
-        if (stg && stg.t) { stg.t.forEach(t => { tT++; if (t[2] === "W") tD++; }); hasT = true; }
-      });
-      if (hasT && tT) sRate = tD / tT * 100;
-    }
-    return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td style="white-space:nowrap;color:${dueDateOf(p, key) ? "var(--t1)" : "var(--t2)"}">${dueDateOf(p, key) || "—"}</td><td>${s.numberOfPersonsDueToComplete}</td><td>${s.uninitiatedNumber}</td><td>${s.numberOfPeopleInProgress}</td><td>${s.numberOfPeopleCompleted}</td><td>${barHtml(sRate)}</td></tr>`;
+    let todoC = s.uninitiatedNumber, doingC = s.numberOfPeopleInProgress, doneC = s.numberOfPeopleCompleted;
+    if (nDet && rT) { todoC = todo; doingC = doing; doneC = doneN; sRate = rD / rT * 100; }
+    return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td style="white-space:nowrap;color:${dueDateOf(p, key) ? "var(--t1)" : "var(--t2)"}">${dueDateOf(p, key) || "—"}</td><td>${s.numberOfPersonsDueToComplete}</td><td>${todoC}</td><td>${doingC}</td><td>${doneC}</td><td>${barHtml(sRate)}</td></tr>`;
   }).join("");
 
   // 二级
@@ -439,7 +481,7 @@ function renderCat() {
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}
     </div>
     ${cards}
-    ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况；应完成日期按「一个阶段 = 一天」推算（任务发布日 = 第 1 阶段）</div><table><tr><th>阶段</th><th>应完成日期</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
+    ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况；应完成日期按「一个阶段 = 一天」推算（任务发布日 = 第 1 阶段）；完成率 =（必修课完成项数 ＋ 考试合格科数）÷ 两项应完成总数，拼盘截图等考核要老师打分（≥80）才算合格，待阅卷 = 未完成</div><table><tr><th>阶段</th><th>应完成日期</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
     <div class="sec"${state.sub === "全部" ? ' style="margin-left:calc(50% - 50vw + 24px);margin-right:calc(50% - 50vw + 24px)"' : ""}>
       <h3>二级汇总</h3>
       <div class="subtabs">
@@ -678,16 +720,15 @@ function renderStageModal() {
   const gset = state.dGroups, rset = state.dRegions;
   if (gset && Object.keys(gset).length) emps = emps.filter(e => gset[mGroup(e).g]);
   if (rset && Object.keys(rset).length) emps = emps.filter(e => rset[mGroup(e).r]);
-  // 已完成/未完成 —— 按该阶段口径（阶段内全部任务完成才算已完成）
+  // 该学员在该阶段的任务包（用于出勤/进度列展示）
   const stageOf = e => {
     const det = p.empDetails && p.empDetails[String(e.employeeId)];
     return det && (det.stages || []).find(s => (s.n || "") === stageName);
   };
+  // 已完成/未完成 —— 与阶段汇总表同一口径：必修课全完成 + 考核全合格（截图打分≥80）才算已完成
   const stageDone = e => {
-    const stg = stageOf(e);
-    if (!stg) return false;
-    const ts = stg.t || [];
-    return ts.length > 0 && ts.every(t => t[2] === "W");
+    const r = stageRequired(p, e, stageName);
+    return r.hasStage && r.total > 0 && r.done >= r.total;
   };
   if (state.dStatus === "已完成") emps = emps.filter(stageDone);
   if (state.dStatus === "未完成") emps = emps.filter(e => !stageDone(e));
@@ -739,7 +780,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。<b>「已完成」= 必修课全完成 且 考核全部合格（拼盘截图等需老师打分 ≥80，待阅卷 = 未完成）。</b></div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
