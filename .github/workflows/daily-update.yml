@@ -1,0 +1,85 @@
+name: 【学习看板】每日数据自动更新
+
+on:
+  # 北京时间每天 00:05 = UTC 前一天 16:05；云端执行，电脑关机也不影响。
+  schedule:
+    - cron: "5 16 * * *"
+  # Actions 页面可手动立即刷新
+  workflow_dispatch:
+
+# 同一时间只允许一轮刷新，避免数据文件互相覆盖。
+concurrency:
+  group: study-data-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # 本地抓一轮约 7 分钟；云端从零开始，给足 60 分钟。
+    timeout-minutes: 60
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # fetch_study.py 只用 Python 标准库（urllib/hashlib/json），无需安装依赖。
+      - name: 抓取学习看板数据
+        run: python fetch_study.py
+
+      # 抓取允许个别计划失败，但不允许"工作流成功、数据其实没更新"。
+      - name: 校验抓取结果
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          p = Path("data/data.json")
+          if not p.exists():
+              raise SystemExit("错误：未生成 data/data.json")
+          d = json.loads(p.read_text(encoding="utf-8"))
+          plans = d.get("plans") or []
+          ok = [x for x in plans if not x.get("fetchError")]
+          bad = [x for x in plans if x.get("fetchError")]
+          if not ok:
+              raise SystemExit("校验失败：没有任何计划抓取成功")
+          if len(bad) / max(len(plans), 1) > 0.3:
+              raise SystemExit("校验失败：失败比例过高 %d/%d" % (len(bad), len(plans)))
+          print("校验通过：成功 %d 个计划，失败 %d 个" % (len(ok), len(bad)))
+          print("generatedAt:", d.get("generatedAt"))
+          print("data.json 大小: %d KB" % (p.stat().st_size // 1024))
+          PY
+
+      - name: 提交并发布数据
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/data.json
+          if git diff --cached --quiet; then
+            echo "数据无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "【学习看板】data: 云端每日自动更新 $(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M')"
+
+          # 先提交本轮结果，再同步远端；若 data.json 有冲突，以本轮新抓的数据为准。
+          if ! git pull --rebase origin main; then
+            echo "rebase 冲突，改为以本轮新抓数据为准"
+            git rebase --abort || true
+            git fetch origin main
+            git reset --soft origin/main
+            git add data/data.json
+            git commit -m "【学习看板】data: 云端每日自动更新 $(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M')"
+          fi
+          git push origin main
+          echo "已发布，GitHub Pages 1-2 分钟后生效"
