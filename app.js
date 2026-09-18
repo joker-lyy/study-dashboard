@@ -315,6 +315,29 @@ function dueDateOf(p, stageName) {
   return dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate());
 }
 
+// 列头全局天数编号（2026-09-19 Rain 拍板）：与加盟商培训日报同一套编号——一个阶段=一天，
+// 第N天 = 阶段在 stageStats 中的全局序号+1（等价于 应完成日期-startDate+1 天）。
+// 背景：平台阶段名各类分别重头计数（理论课第一天→技术培训第一~五天→门店实操第六七八天→理论课第九天），
+// 而日报用全局编号（技术培训第5天=9-18）。看板照抄平台名导致「第五天」两系统差一天，
+// 用户按日报口径反复报障（第五天=18号）。列头一律用全局编号，原始阶段名放 th 的 title 悬浮可查。
+const STAGE_TYPE_ALIAS = { "门店实操": "门店实践" };
+function stageDayLabel(p, stageName) {
+  const name = stageName || "";
+  const m = /^【(.+?)】/.exec(name);
+  const typ = m ? (STAGE_TYPE_ALIAS[m[1]] || m[1]) : "";
+  let n = null;
+  const list = (p && p.stageStats) || [];
+  const idx = list.findIndex(x => (x.phaseName || "") === name);
+  if (idx >= 0) {
+    n = idx + 1;
+  } else if (p && p.startDate) {
+    const due = dueDateOf(p, name);
+    if (due) n = Math.round((new Date(due + "T00:00:00") - new Date(p.startDate + "T00:00:00")) / 86400000) + 1;
+  }
+  if (!n || n < 1) return esc(name).replace(/新加盟商培训/g, ""); // 兜底：无法定位全局天数时保持原样
+  return (typ ? esc(typ) : "") + "第" + n + "天";
+}
+
 function setRange(r) {
   state.range = r;
   if (r === "区间") {
@@ -600,7 +623,7 @@ function aggDetailTable(p, emps) {
   }).join("");
   return !hasDet
     ? `<div style="font-size:12px;color:#b45309;background:#fff7e6;border:1px solid #ffe3a3;border-radius:8px;padding:8px 12px;margin-bottom:8px">⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。</div>${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
-    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>出勤</th><th>总进度</th>${stageNames.map(sn => { const ds = dueDateOf(p, sn); const short = esc(sn).replace(/新加盟商培训/g, ""); return `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${short}${ds ? `<div style="font-size:11px;font-weight:400;color:var(--t2)">${ds}</div>` : ""}</th>`; }).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
+    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>出勤</th><th>总进度</th>${stageNames.map(sn => { const ds = dueDateOf(p, sn); const short = stageDayLabel(p, sn); return `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px" title="阶段：${esc(sn)}">${short}${ds ? `<div style="font-size:11px;font-weight:400;color:var(--t2)">${ds}</div>` : ""}</th>`; }).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
 }
 
 // 线上线下培训的明细版式：姓名/门店/区域/实操/考试分数/阶段进度/完成任务明细（抓取同新加盟商培训）
@@ -730,7 +753,7 @@ function renderStageModal() {
   const plans = plansInRange(state.cat);
   const p = plans[state.planIdx];
   const due = dueDateOf(p, stageName);
-  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + stageName + " · 学习明细" + (p.startDate ? ` 【任务发布时间：${p.startDate}】` : "") + (due ? ` 【应完成日期：${due}】` : "");
+  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + (stageDayLabel(p, stageName) || stageName) + " · 学习明细" + (p.startDate ? ` 【任务发布时间：${p.startDate}】` : "") + (due ? ` 【应完成日期：${due}】` : "");
   let emps = (p.emps || []).filter(e => statusOf(e) != null);
   const allGroups = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
   const gset = state.dGroups, rset = state.dRegions;
