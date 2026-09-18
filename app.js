@@ -96,7 +96,7 @@ function examPassT(t) {
 // 任务完成标签（仅展示用；统计口径见 examPassT）：待阅卷单独标出，但计入未完成
 function taskLabel(t) {
   if (t && t[2] === "W") return { txt: "✓ 已完成", ok: true, pending: false };
-  if (t && t[4] === "待阅卷") return { txt: "⏳ 待阅卷（未完成）", ok: false, pending: true };
+  if (t && t[4] === "待阅卷") return { txt: "待阅卷", ok: false, pending: true };
   return { txt: "✗ 未完成", ok: false, pending: false };
 }
 function stageTasksOf(p, e, stageName) {
@@ -798,7 +798,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；⏳待阅卷 单独标注，统计上计入未完成。</b></div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷 单独标注（黄色），统计上计入未完成。</b></div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
