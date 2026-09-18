@@ -59,7 +59,21 @@ jobs:
               raise SystemExit("校验失败：没有任何计划抓取成功")
           if len(bad) / max(len(plans), 1) > 0.3:
               raise SystemExit("校验失败：失败比例过高 %d/%d" % (len(bad), len(plans)))
-          print("校验通过：成功 %d 个计划，失败 %d 个" % (len(ok), len(bad)))
+
+          # 计划数骤降 = 抓取被干扰（同账号并发登录会让计划列表变短）。
+          # 2026-09-18 实例：55 个正常，本机与云端同时抓数时只拿到 37 个。
+          import subprocess
+          try:
+              old = json.loads(subprocess.check_output(
+                  ["git", "show", "HEAD:data/data.json"]).decode("utf-8"))
+              n_old = len(old.get("plans") or [])
+          except Exception:
+              n_old = 0
+          if n_old >= 20 and len(plans) < n_old * 0.7:
+              raise SystemExit("校验失败：计划数从 %d 骤降到 %d，疑似抓取被并发干扰，已阻止发布"
+                               % (n_old, len(plans)))
+
+          print("校验通过：成功 %d 个计划，失败 %d 个（上一版 %d 个）" % (len(ok), len(bad), n_old))
           print("generatedAt:", d.get("generatedAt"))
           print("data.json 大小: %d KB" % (p.stat().st_size // 1024))
           PY
