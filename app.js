@@ -1334,7 +1334,7 @@ function directIndex() {
       if (det) pls.push({ plan: p, det });
     });
     pls.sort((a, b) => (b.plan.startDate || "").localeCompare(a.plan.startDate || ""));
-    // 统计口径同看板（9/19 用户拍板）：无关紧要的「其他」分类不统计；明细展示仍保留全部分类
+    // 统计口径同看板（9/19 用户拍板）：「其他」分类直接删除——统计与展示均不含
     const stPls = pls.filter(x => (x.plan.category || "其他") !== "其他");
     const pDone = stPls.reduce((a, x) => a + x.det.done, 0), pTotal = stPls.reduce((a, x) => a + x.det.total, 0);
     // 地图任务级统计（汇总进度口径：地图已完成任务/地图任务总数）
@@ -1394,7 +1394,7 @@ function renderDirect() {
     <div class="sec">
       <h3>直营学习明细（培训组-直营组）</h3>
       <div style="font-size:12px;color:var(--t2);margin:-4px 0 10px">
-        口径：学习率 = 课程已完成项目 ÷ 课程应完成项目（免修任务剔除；无关紧要的「其他」分类不计入统计，口径同看板）· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
+        口径：学习率 = 课程已完成项目 ÷ 课程应完成项目（免修任务剔除；无关紧要的「其他」分类已删除不展示）· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
       </div>
       <div class="cards">
         <div class="card"><div class="k">直营门店</div><div class="v">${idx.stores.length}<small> 家</small></div></div>
@@ -1515,11 +1515,11 @@ function renderDirectEmpModal() {
       <div style="overflow:auto"><table>${head}${rows.join("")}</table></div>
     </details>`;
   };
-  // 分类子导航：课程按看板分类划分（9/19 用户拍板：学习任务内部再分类）
+  // 分类子导航：课程按看板分类划分（9/19 用户拍板：学习任务内部再分类；「其他」直接删除不展示）
   // 计数口径=有效计划（有任务明细行的），与渲染严格一致（空壳计划不计数不显示）
-  const rendered = P.plans.map(info => ({ cat: info.plan.category || "其他", html: planCard(info) }));
-  const validOf = c => rendered.filter(r => r.cat === c && r.html);
-  const allValid = rendered.filter(r => r.html);
+  const rendered = P.plans.map(info => ({ cat: info.plan.category || "其他", html: planCard(info) })).filter(r => r.html && r.cat !== "其他");
+  const validOf = c => rendered.filter(r => r.cat === c);
+  const allValid = rendered;
   const empCats = [...new Set(allValid.map(r => r.cat))];
   const catsOrdered = [...(DATA.categories || []).filter(c => empCats.includes(c)), ...empCats.filter(c => !(DATA.categories || []).includes(c))];
   const catJs = c => esc(c).replace(/'/g, "\\'");
@@ -1586,7 +1586,7 @@ function renderDirectEmpModal() {
       <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px;color:${dRateCol(P.mAvg)}">${P.mAvg == null ? "—" : P.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.maps.length} 张（完成 ${mDone}）</div></div>
       <div class="card" style="min-width:150px"><div class="k">汇总进度</div><div class="v" style="font-size:20px;color:${dRateCol(P.sRate)}">${P.sRate == null ? "—" : P.sRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.pDone + P.mDone}/${P.pTotal + P.mTotal} 项（任务+地图）</div></div>
     </div>
-    <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：任务口径 = 已完成/应完成项目（免修剔除；「其他」分类不计入统计，口径同看板）· 学习地图为平台完成进度 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
+    <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：任务口径 = 已完成/应完成项目（免修剔除；「其他」分类已删除不展示）· 学习地图为平台完成进度 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
   const taskPanel = `
     <div style="font-size:12px;color:var(--t2);margin-bottom:8px">线上线下 / 各组派发的培训计划 · 按看板分类划分 · 点击计划名展开任务明细</div>
     ${catBar}
