@@ -1337,6 +1337,30 @@ function dBar(v) {
   return `<span class="bar"><i class="${v >= 80 ? "g" : v >= 40 ? "o" : "r"}" style="width:${Math.min(v, 100)}%"></i></span><span style="color:${col};font-weight:600">${v.toFixed(1)}%</span>`;
 }
 function dRateCol(v) { return v == null ? "inherit" : v >= 90 ? "#1aad19" : "#e64340"; }
+// 直营板块时段筛选（9/19 用户拍板：全部/本月数据/上月数据）——语义同看板全局区间：计划按 startDate、地图按 issueDate 归属月份
+function dMonthOff() { return (state.dRange || "全部").startsWith("本月") ? 0 : (state.dRange || "全部").startsWith("上月") ? -1 : null; }
+function dInRange(dateStr) {
+  const off = dMonthOff();
+  if (off == null) return true;
+  if (!dateStr) return false;
+  const d = String(dateStr).slice(0, 10);
+  const [from, to] = monthRange(off);
+  return d >= from && d <= to;
+}
+// 按 state.dRange 计算单员统计（P.plans/P.maps 为原始全量数组，此处过滤后现算；「其他」分类不统计口径同看板）
+// 用户拍板（9/19）：时段筛选只作用于学习任务（计划按 startDate 归属月份）；学习地图不受筛选，始终统计全部
+function dCalc(P) {
+  const pls = P.plans.filter(x => (x.plan.category || "其他") !== "其他" && dInRange(x.plan.startDate));
+  const pDone = pls.reduce((a, x) => a + x.det.done, 0), pTotal = pls.reduce((a, x) => a + x.det.total, 0);
+  const maps = P.maps;
+  const mAvg = maps.length ? maps.reduce((a, m) => a + (parseFloat(m.progress) || 0), 0) / maps.length : null;
+  let mDone = 0, mTotal = 0;
+  maps.forEach(m => (m.stages || []).forEach(sg => (sg.tasks || []).forEach(tk => { mTotal++; if (String(tk.status) === "3") mDone++; })));
+  const pRate = pTotal ? pDone / pTotal * 100 : null;
+  const sRate = (pTotal + mTotal) ? (pDone + mDone) / (pTotal + mTotal) * 100 : null;
+  return { pls, pDone, pTotal, pRate, maps, mAvg, mDone, mTotal, sRate };
+}
+function dSetRange(v) { state.dRange = v; renderDirect(); }
 // 直营员工索引（构建一次）：{emps:[eid], byStore:{店:[eid]}, prof:{eid:{...}}, plans:{eid:[{plan,det}]}, mapsAv:{eid:{avg,n,done}}}
 function directIndex() {
   if (window.__directIdx) return window.__directIdx;
@@ -1387,23 +1411,23 @@ function renderDirect() {
     el.innerHTML = `<div class="sec"><h3>直营学习明细</h3><div class="empty">暂无直营组地图明细数据，请更新后查看（fetch_study.py 新增 directMaps 抓取）</div></div>`;
     return;
   }
-  // 汇总
+  // 汇总（按时段筛选：全部/本月数据/上月数据）
   let tD = 0, tT = 0, mSum = 0, mN = 0, sD = 0, sT = 0;
   idx.emps.forEach(eid => {
-    const P = idx.prof[eid];
-    tD += P.pDone; tT += P.pTotal;
-    sD += P.pDone + P.mDone; sT += P.pTotal + P.mTotal;
-    if (P.mAvg != null) { mSum += P.mAvg * P.maps.length; mN += P.maps.length; }
+    const S = dCalc(idx.prof[eid]);
+    tD += S.pDone; tT += S.pTotal;
+    sD += S.pDone + S.mDone; sT += S.pTotal + S.mTotal;
+    if (S.mAvg != null) { mSum += S.mAvg * S.maps.length; mN += S.maps.length; }
   });
   const rate = tT ? tD / tT * 100 : 0, mAvg = mN ? mSum / mN : 0, sRateAll = sT ? sD / sT * 100 : 0;
   const storeCards = idx.stores.map(st => {
     const eids = idx.byStore[st];
     let d = 0, t = 0, ms = 0, mn = 0, sd = 0, st2 = 0;
     eids.forEach(eid => {
-      const P = idx.prof[eid];
-      d += P.pDone; t += P.pTotal;
-      sd += P.pDone + P.mDone; st2 += P.pTotal + P.mTotal;
-      if (P.mAvg != null) { ms += P.mAvg * P.maps.length; mn += P.maps.length; }
+      const S = dCalc(idx.prof[eid]);
+      d += S.pDone; t += S.pTotal;
+      sd += S.pDone + S.mDone; st2 += S.pTotal + S.mTotal;
+      if (S.mAvg != null) { ms += S.mAvg * S.maps.length; mn += S.maps.length; }
     });
     const r = t ? d / t * 100 : 0, ma = mn ? ms / mn : 0, sr = st2 ? sd / st2 * 100 : 0;
     return `<div class="card" style="cursor:pointer" onclick="openDirectStore('${esc(st).replace(/'/g, "\\'")}')">
@@ -1419,6 +1443,10 @@ function renderDirect() {
       <h3>直营学习明细（培训组-直营组）<button class="btn directShareBtn" style="margin-left:auto;padding:6px 14px;font-size:12px" onclick="openShareOverlay('direct')">🔗 分享本页（门店自查链接）</button></h3>
       <div style="font-size:12px;color:var(--t2);margin:-4px 0 10px">
         口径：学习率 = 课程已完成项目 ÷ 课程应完成项目（免修任务剔除；无关紧要的「其他」分类已删除不展示）· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
+      </div>
+      <div class="filters" style="margin-bottom:12px">
+        ${["全部", "本月数据", "上月数据"].map(r => `<button class="${(state.dRange || "全部") === r ? "active" : ""}" onclick="dSetRange('${r}')">${r}</button>`).join("")}
+        ${(state.dRange || "全部") !== "全部" ? `<span style="font-size:12px;color:var(--t2);align-self:center;margin-left:6px">学习任务只统计${state.dRange.startsWith("本月") ? "本月" : "上月"}发布的计划；学习地图不受筛选，始终为全部</span>` : ""}
       </div>
       <div class="cards" style="margin-bottom:12px">
         <div class="card" style="grid-column:span 2"><div class="k">直营门店</div><div class="v">${idx.stores.length}<small> 家</small></div></div>
@@ -1454,16 +1482,17 @@ function renderDirectStoreModal() {
     if (state.dEmpStatus2 === "离职" && P.empStatus === "zc") return false;
     return true;
   });
-  // 排序：地图进度高的在前
-  list.sort((a, b) => (idx.prof[b].mAvg || 0) - (idx.prof[a].mAvg || 0));
+  // 排序：地图进度高的在前（按当前时段）
+  list.sort((a, b) => (dCalc(idx.prof[b]).mAvg || 0) - (dCalc(idx.prof[a]).mAvg || 0));
   const rows = list.map(eid => {
     const P = idx.prof[eid];
+    const S = dCalc(P);
     const st = P.empStatus === "zc" ? `<span class="badge b-green">在职</span>` : `<span class="badge b-gray">离职</span>`;
     return `<tr style="cursor:pointer" onclick="openDirectEmp('${eid}')">
       <td><b>${esc(P.name)}</b></td><td>${esc(P.position || "—")}</td>
-      <td>${P.pRate == null ? "—" : dBar(P.pRate)} <span style="color:var(--t2);font-size:12px">${P.pDone}/${P.pTotal}</span></td>
-      <td>${P.mAvg == null ? "—" : dBar(P.mAvg)} <span style="color:var(--t2);font-size:12px">${P.maps.length} 张</span></td>
-      <td>${P.sRate == null ? "—" : dBar(P.sRate)} <span style="color:var(--t2);font-size:12px">${P.pDone + P.mDone}/${P.pTotal + P.mTotal}</span></td>
+      <td>${S.pRate == null ? "—" : dBar(S.pRate)} <span style="color:var(--t2);font-size:12px">${S.pDone}/${S.pTotal}</span></td>
+      <td>${S.mAvg == null ? "—" : dBar(S.mAvg)} <span style="color:var(--t2);font-size:12px">${S.maps.length} 张</span></td>
+      <td>${S.sRate == null ? "—" : dBar(S.sRate)} <span style="color:var(--t2);font-size:12px">${S.pDone + S.mDone}/${S.pTotal + S.mTotal}</span></td>
       <td>${st}</td>
       <td><span style="color:#186BEB">明细 ›</span></td></tr>`;
   }).join("") || `<tr><td colspan="7" class="empty">无符合筛选条件的伙伴</td></tr>`;
@@ -1501,9 +1530,10 @@ function renderDirectEmpModal() {
   const idx = directIndex();
   const P = idx.prof[state.dEmp];
   if (!P) return;
+  const S = dCalc(P); // 时段筛选（全部/本月数据/上月数据）
   // ① 汇总：分分类（空壳 total=0 不计；「其他」分类不统计，口径同看板）
   const byCat = {};
-  P.plans.forEach(({ plan, det }) => {
+  S.pls.forEach(({ plan, det }) => {
     if (!det.total || (plan.category || "其他") === "其他") return;
     const c = plan.category || "其他";
     byCat[c] = byCat[c] || { d: 0, t: 0 };
@@ -1511,7 +1541,7 @@ function renderDirectEmpModal() {
   });
   const catChips = Object.entries(byCat).map(([c, v]) =>
     `<div class="card" style="min-width:150px"><div class="k">${esc(c)}</div><div class="v" style="font-size:20px;color:${v.t ? dRateCol(v.d / v.t * 100) : "inherit"}">${v.t ? (v.d / v.t * 100).toFixed(1) : "—"}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${v.d}/${v.t} 项</div></div>`).join("");
-  const mDone = P.maps.filter(m => parseFloat(m.progress) >= 100).length;
+  const mDone = S.maps.filter(m => parseFloat(m.progress) >= 100).length;
   const back = `<button class="btn" style="padding:6px 12px;font-size:12px;background:var(--navy)" onclick="openDirectStore('${esc(P.store).replace(/'/g, "\\'")}')">← 返回门店</button>`;
   // ② 学习任务：按计划分组（形态四列）
   const formBar = `<div class="filters">${["全部", ...D_FORMS].map(f =>
@@ -1544,7 +1574,7 @@ function renderDirectEmpModal() {
   };
   // 分类子导航：课程按看板分类划分（9/19 用户拍板：学习任务内部再分类；「其他」直接删除不展示）
   // 计数口径=有效计划（有任务明细行的），与渲染严格一致（空壳计划不计数不显示）
-  const rendered = P.plans.map(info => ({ cat: info.plan.category || "其他", html: planCard(info) })).filter(r => r.html && r.cat !== "其他");
+  const rendered = S.pls.map(info => ({ cat: info.plan.category || "其他", html: planCard(info) })).filter(r => r.html && r.cat !== "其他");
   const validOf = c => rendered.filter(r => r.cat === c);
   const allValid = rendered;
   const empCats = [...new Set(allValid.map(r => r.cat))];
@@ -1566,7 +1596,7 @@ function renderDirectEmpModal() {
     planBlocks = validOf(curCat).map(r => r.html).join("") || `<div class="empty">该分类下暂无培训计划</div>`;
   }
   // ③ 学习地图
-  const mapBlocks = P.maps.map(m => {
+  const mapBlocks = S.maps.map(m => {
     const prog = parseFloat(m.progress) || 0;
     const rows = [];
     (m.stages || []).forEach(st => {
@@ -1598,7 +1628,7 @@ function renderDirectEmpModal() {
   const tabDefs = [
     ["sum", "汇总", ""],
     ["task", "学习任务", allValid.length ? `${allValid.length} 个计划` : ""],
-    ["map", "学习地图", P.maps.length ? `${P.maps.length} 张` : ""],
+    ["map", "学习地图", S.maps.length ? `${S.maps.length} 张` : ""],
   ];
   const tabBar = `<div style="display:flex;gap:6px;background:var(--card);border:1px solid var(--line);padding:6px;border-radius:10px;margin-bottom:12px;position:sticky;top:-17px;z-index:5">
     ${tabDefs.map(([k, lb, bd]) => {
@@ -1608,10 +1638,10 @@ function renderDirectEmpModal() {
   </div>`;
   const sumPanel = `
     <div class="cards">
-      <div class="card" style="min-width:150px"><div class="k">全部任务</div><div class="v" style="font-size:20px;color:${dRateCol(P.pRate)}">${P.pRate == null ? "—" : P.pRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.pDone}/${P.pTotal} 项</div></div>
+      <div class="card" style="min-width:150px"><div class="k">全部任务</div><div class="v" style="font-size:20px;color:${dRateCol(S.pRate)}">${S.pRate == null ? "—" : S.pRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.pDone}/${S.pTotal} 项</div></div>
       ${catChips}
-      <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px;color:${dRateCol(P.mAvg)}">${P.mAvg == null ? "—" : P.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.maps.length} 张（完成 ${mDone}）</div></div>
-      <div class="card" style="min-width:150px"><div class="k">汇总进度</div><div class="v" style="font-size:20px;color:${dRateCol(P.sRate)}">${P.sRate == null ? "—" : P.sRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.pDone + P.mDone}/${P.pTotal + P.mTotal} 项（任务+地图）</div></div>
+      <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px;color:${dRateCol(S.mAvg)}">${S.mAvg == null ? "—" : S.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.maps.length} 张（完成 ${mDone}）</div></div>
+      <div class="card" style="min-width:150px"><div class="k">汇总进度</div><div class="v" style="font-size:20px;color:${dRateCol(S.sRate)}">${S.sRate == null ? "—" : S.sRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.pDone + S.mDone}/${S.pTotal + S.mTotal} 项（任务+地图）</div></div>
     </div>
     <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：任务口径 = 已完成/应完成项目（免修剔除；「其他」分类已删除不展示）· 学习地图为平台完成进度 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
   const taskPanel = `
@@ -1783,7 +1813,7 @@ function applyShareView(){
       window.__soloRefresh = setInterval(async () => {
         try {
           const d = await (await fetch("data/data.json?v=" + Date.now(), { cache: "no-store" })).json();
-          if (d.generatedAt !== DATA.generatedAt) { DATA = d; render(); }
+          if (d.generatedAt !== DATA.generatedAt) { DATA = d; window.__directIdx = null; render(); }
         } catch (e) {}
       }, 5 * 60 * 1000);
     }
