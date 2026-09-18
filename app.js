@@ -1420,9 +1420,11 @@ function renderDirect() {
       <div style="font-size:12px;color:var(--t2);margin:-4px 0 10px">
         口径：学习率 = 课程已完成项目 ÷ 课程应完成项目（免修任务剔除；无关紧要的「其他」分类已删除不展示）· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
       </div>
-      <div class="cards">
-        <div class="card"><div class="k">直营门店</div><div class="v">${idx.stores.length}<small> 家</small></div></div>
-        <div class="card"><div class="k">直营伙伴</div><div class="v">${idx.emps.length}<small> 人</small></div></div>
+      <div class="cards" style="margin-bottom:12px">
+        <div class="card" style="grid-column:span 2"><div class="k">直营门店</div><div class="v">${idx.stores.length}<small> 家</small></div></div>
+        <div class="card" style="grid-column:span 2"><div class="k">直营伙伴</div><div class="v">${idx.emps.length}<small> 人</small></div></div>
+      </div>
+      <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
         <div class="card"><div class="k">任务完成率</div><div class="v" style="color:${dRateCol(rate)}">${rate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${tD} / ${tT} 项</div></div>
         <div class="card"><div class="k">地图平均进度</div><div class="v" style="color:${dRateCol(mAvg)}">${mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">共 ${mN} 张地图在学</div></div>
         <div class="card"><div class="k">汇总进度</div><div class="v" style="color:${dRateCol(sRateAll)}">${sRateAll.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${sD} / ${sT} 项（任务+地图）</div></div>
