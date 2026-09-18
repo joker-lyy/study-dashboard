@@ -44,16 +44,18 @@ def classify(name):
     for cat, kws in CATEGORY_RULES:
         if any(k in name for k in kws):
             return cat
-    return None  # 9/19 改：不再兜底「其他」——无法归类的计划由 plan_cat 统一剔除
+    return None  # 无法归类返回 None，兜底归属由 plan_cat 决定
 
 def plan_cat(p):
-    """计划归类（9/19 用户拍板）：裂变最优先（平台把裂变计划 categoryName 设为「新加盟商培训」，
+    """计划归类：裂变最优先（平台把裂变计划 categoryName 设为「新加盟商培训」，
     必须保住裂变独立业务线）；其次平台 categoryName（官方分类，如「项目学习任务」->线上线下培训）；
-    再按计划名关键词；都无法归类返回 None -> 直接删除不展示。"""
+    再按计划名关键词；都无法归类兜底「其他」。
+    （9/19晚 用户澄清：只删直营学习明细板块的「其他」，主看板「其他」页签保留——
+    拼好饭等课程靠手动归口覆盖 cat_overrides 移到线上线下培训，兜底删除会导致课程凭空消失）"""
     n = p.get("planName") or ""
     if "裂变" in n:
         return "裂变加盟商培训"
-    return classify(p.get("categoryName") or "") or classify(n)
+    return classify(p.get("categoryName") or "") or classify(n) or "其他"
 
 def _sign(n, t):
     return hashlib.sha256(f"{n}{t}{SECRET}".encode()).hexdigest()
@@ -463,11 +465,8 @@ def main():
     print(f"过滤测试/XX计划: {n_before} -> {len(plans)}")
     for p in plans:
         p["_cat"] = plan_cat(p)
-    # 「其他」分类直接删除（9/19 用户拍板）：无法归类的计划（如非培训部自建任务）不输出不展示
-    dropped = [p for p in plans if not p["_cat"]]
-    if dropped:
-        print(f"删除无法归类（其他）计划 {len(dropped)} 个: " + "、".join(p["planName"] for p in dropped))
-        plans = [p for p in plans if p["_cat"]]
+    # 9/19晚 用户澄清：无法归类兜底回「其他」输出（主看板「其他」页签保留）；
+    # 直营学习明细板块由前端自行隐藏「其他」，不再在数据源整条删除
 
     cats = {}
     for p in plans:
