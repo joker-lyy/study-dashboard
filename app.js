@@ -1393,7 +1393,7 @@ function renderDirect() {
   }).join("");
   el.innerHTML = `
     <div class="sec">
-      <h3>直营学习明细（培训组-直营组）</h3>
+      <h3>直营学习明细（培训组-直营组）<button class="btn directShareBtn" style="margin-left:auto;padding:6px 14px;font-size:12px" onclick="openShareOverlay('direct')">🔗 分享本页（门店自查链接）</button></h3>
       <div style="font-size:12px;color:var(--t2);margin:-4px 0 10px">
         口径：学习率 = 课程已完成项目 ÷ 课程应完成项目（免修任务剔除；无关紧要的「其他」分类已删除不展示）· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
       </div>
@@ -1672,6 +1672,9 @@ window.openShareOverlay = function(mod){
     st.aggFilter = (typeof aggFilter !== "undefined") ? aggFilter : "全部";
   } else if (mod === "stage" && state.stageKey) {
     st = shareSnap("modal"); st.m = "stage";
+  } else if (mod === "direct") {
+    // 直营学习明细独立单页：打开只见这一页，页内钻取/筛选可用，数据随看板自动同步
+    st = shareSnap(); st.tab = "直营学习明细"; st.solo = "direct";
   } else {
     st = shareSnap();
   }
@@ -1685,7 +1688,9 @@ window.openShareOverlay = function(mod){
     document.body.appendChild(ov);
   }
   const isModal = !!st.m;
-  const hint = isModal ? "对方打开后仅看到这个弹窗的学习明细（只读）" : "对方打开后直接落到当前页签/筛选的视图";
+  const hint = isModal ? "对方打开后仅看到这个弹窗的学习明细（只读）"
+    : st.solo === "direct" ? "对方打开后只看到「直营学习明细」单页，可点击门店/伙伴逐层查询，数据随看板自动更新"
+    : "对方打开后直接落到当前页签/筛选的视图";
   ov.innerHTML = `
     <div style="background:#fff;border-radius:12px;max-width:560px;width:100%;padding:18px 20px" onclick="event.stopPropagation()">
       <div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">🔗 分享链接已生成</div>
@@ -1737,6 +1742,26 @@ function applyShareView(){
       document.head.appendChild(st2);
     }
     document.body.classList.add("share-solo");
+  }
+  // 独立单页分享（直营学习明细）：隐藏顶栏/页签/二级条，只留这一页，页内钻取全部可用
+  if (o.solo === "direct") {
+    state.tab = "直营学习明细";
+    if (!document.getElementById("shareSoloPageStyle")) {
+      const st3 = document.createElement("style");
+      st3.id = "shareSoloPageStyle";
+      st3.textContent = "body.share-solo-page>header,body.share-solo-page #mainTabs,body.share-solo-page #promoBar,body.share-solo-page .directShareBtn{display:none!important}body.share-solo-page #main{padding-top:22px}";
+      document.head.appendChild(st3);
+    }
+    document.body.classList.add("share-solo-page");
+    // 数据随看板同步：每5分钟静默拉一次，generatedAt 变了就热替换重绘（不打断当前浏览）
+    if (!window.__soloRefresh) {
+      window.__soloRefresh = setInterval(async () => {
+        try {
+          const d = await (await fetch("data/data.json?v=" + Date.now(), { cache: "no-store" })).json();
+          if (d.generatedAt !== DATA.generatedAt) { DATA = d; render(); }
+        } catch (e) {}
+      }, 5 * 60 * 1000);
+    }
   }
   render();
   showShareRoBar();
