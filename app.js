@@ -1436,10 +1436,11 @@ function renderDirectStoreModal() {
       ${rows}
     </table>`;
 }
-/* 伙伴档案弹窗：①汇总 ②学习任务（按计划分组） ③学习地图 */
+/* 伙伴档案弹窗：二级导航分类展示（汇总 / 学习任务 / 学习地图） */
 function dSetForm(v) { state.dForm = v; renderDirectEmpModal(); }
+function dSetEmpTab(v) { state.dEmpTab = v; renderDirectEmpModal(); }
 function openDirectEmp(eid) {
-  state.dEmp = String(eid); state.dForm = "全部";
+  state.dEmp = String(eid); state.dForm = "全部"; state.dEmpTab = "sum";
   window.__directBack = "emp";
   document.getElementById("mTitle").textContent = (directIndex().prof[String(eid)] || {}).name + " · 学习档案";
   renderDirectEmpModal();
@@ -1523,20 +1524,39 @@ function renderDirectEmpModal() {
       ${rows.length ? `<div style="overflow:auto;margin-top:8px"><table>${head}${rows.join("")}</table></div>` : `<div class="empty" style="padding:6px 0">该地图暂无阶段任务明细</div>`}
     </div>`;
   }).join("") || `<div class="empty">该伙伴暂未加入任何学习地图</div>`;
-  document.getElementById("mBody").innerHTML = `
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">${back}
-      <span style="font-size:13px;color:var(--t2)">${esc(P.store)} · ${esc(P.position || "")} ${P.role ? "· " + esc(P.role) : ""}</span></div>
-    <h4 style="margin:6px 0 6px">① 汇总（任务口径：已完成/应完成项目）</h4>
-    <div class="cards" style="margin-bottom:4px">
+  // ---- 二级导航：汇总 / 学习任务 / 学习地图 分类展示 ----
+  const tabDefs = [
+    ["sum", "汇总", ""],
+    ["task", "学习任务", P.plans.length ? `${P.plans.length} 个计划` : ""],
+    ["map", "学习地图", P.maps.length ? `${P.maps.length} 张` : ""],
+  ];
+  const tabBar = `<div style="display:flex;gap:6px;background:var(--card);border:1px solid var(--line);padding:6px;border-radius:10px;margin-bottom:12px;position:sticky;top:-17px;z-index:5">
+    ${tabDefs.map(([k, lb, bd]) => {
+      const on = (state.dEmpTab || "sum") === k;
+      return `<button onclick="dSetEmpTab('${k}')" style="border:none;flex:1;background:${on ? "var(--blue)" : "transparent"};color:${on ? "#fff" : "var(--t2)"};padding:9px 10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">${lb}${bd ? `<span style="font-size:11px;opacity:.8;margin-left:4px">${bd}</span>` : ""}</button>`;
+    }).join("")}
+  </div>`;
+  const sumPanel = `
+    <div class="cards">
       <div class="card" style="min-width:150px"><div class="k">全部任务</div><div class="v" style="font-size:20px">${P.pRate == null ? "—" : P.pRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.pDone}/${P.pTotal} 项</div></div>
       ${catChips}
       <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px">${P.mAvg == null ? "—" : P.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.maps.length} 张（完成 ${mDone}）</div></div>
     </div>
-    <h4 style="margin:12px 0 6px">② 学习任务明细（线上线下 / 各组派发的培训计划）</h4>
+    <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：任务口径 = 已完成/应完成项目（免修剔除）· 学习地图为平台完成进度 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
+  const taskPanel = `
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">线上线下 / 各组派发的培训计划 · 点击计划名展开任务明细</div>
     ${formBar}
-    ${planBlocks}
-    <h4 style="margin:12px 0 6px">③ 学习地图明细</h4>
+    ${planBlocks}`;
+  const mapPanel = `
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">平台学习地图 · 按阶段展示任务明细</div>
+    ${formBar}
     ${mapBlocks}`;
+  const panels = { sum: sumPanel, task: taskPanel, map: mapPanel };
+  document.getElementById("mBody").innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">${back}
+      <span style="font-size:13px;color:var(--t2)">${esc(P.store)} · ${esc(P.position || "")} ${P.role ? "· " + esc(P.role) : ""}</span></div>
+    ${tabBar}
+    ${panels[state.dEmpTab || "sum"]}`;
 }
 
 /* ---------- 主渲染 ---------- */
