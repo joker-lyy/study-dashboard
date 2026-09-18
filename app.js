@@ -1198,6 +1198,7 @@ function openSurvey(idx, keepFilter) {
     <div style="display:flex;gap:6px;margin-bottom:10px">
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${surveyFilter === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="surveyFilter='${f}';openSurvey(${idx},true)">${f}</button>`).join("")}
       <span style="margin-left:auto;font-size:12px;color:var(--t2);align-self:center">共 ${(p.emps || []).filter(e => statusOf(e) != null).length} 人 · 已完成 ${doneAll} 人</span>
+      <button class="btn" style="padding:5px 14px;font-size:12px;align-self:center" onclick="sharePng('modal')">🖼 图片</button>
     </div>
     ${rows ? `<table><tr><th>姓名</th><th>门店</th><th>答题状态</th></tr>${rows}</table>` : `<div class="empty">该筛选条件下无人员</div>`}`;
   document.getElementById("mask").classList.add("show");
@@ -1206,7 +1207,7 @@ function openAdvice(idx) {
   const p = surveysInRange()[idx];
   const subs = surveySubs(p.planName);
   document.getElementById("mTitle").textContent = p.planName + " · 建议明细（" + subs.length + "份）";
-  document.getElementById("mBody").innerHTML = subs.length ? adviceTable(subs) : `<div class="empty">该问卷对应课程暂无提交</div>`;
+  document.getElementById("mBody").innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn" style="padding:5px 14px;font-size:12px" onclick="sharePng('modal')">🖼 图片</button></div>` + (subs.length ? adviceTable(subs) : `<div class="empty">该问卷对应课程暂无提交</div>`);
   document.getElementById("mask").classList.add("show");
 }
 function openAdviceC(idx) {
@@ -1214,7 +1215,7 @@ function openAdviceC(idx) {
   if (!c) return;
   const subs = subsForTopic(c.name).filter(v => dateInrange(new Date(v.time).toISOString().slice(0, 10)));
   document.getElementById("mTitle").textContent = c.name + " · 建议明细（" + subs.length + "份）";
-  document.getElementById("mBody").innerHTML = subs.length ? adviceTable(subs) : `<div class="empty">该调研暂无提交</div>`;
+  document.getElementById("mBody").innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn" style="padding:5px 14px;font-size:12px" onclick="sharePng('modal')">🖼 图片</button></div>` + (subs.length ? adviceTable(subs) : `<div class="empty">该调研暂无提交</div>`);
   document.getElementById("mask").classList.add("show");
 }
 
@@ -1448,6 +1449,7 @@ function renderDirectStoreModal() {
       ${sel(["全部", ...positions], state.dPos, "directSetPos")}
       ${sel(["在职", "全部", "离职"], state.dEmpStatus2 || "在职", "directSetSt")}
       <span style="font-size:12px;color:var(--t2)">共 ${list.length} 人 · 点击行看学习档案</span>
+      <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:auto" onclick="sharePng('modal')">🖼 图片</button>
     </div>
     <table>
       <tr><th>姓名</th><th>岗位</th><th>任务完成率（已完成/应完成）</th><th>地图平均进度</th><th>汇总进度（任务+地图）</th><th>状态</th><th></th></tr>
@@ -1599,7 +1601,8 @@ function renderDirectEmpModal() {
   const panels = { sum: sumPanel, task: taskPanel, map: mapPanel };
   document.getElementById("mBody").innerHTML = `
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">${back}
-      <span style="font-size:13px;color:var(--t2)">${esc(P.store)} · ${esc(P.position || "")} ${P.role ? "· " + esc(P.role) : ""}</span></div>
+      <span style="font-size:13px;color:var(--t2)">${esc(P.store)} · ${esc(P.position || "")} ${P.role ? "· " + esc(P.role) : ""}</span>
+      <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:auto" onclick="sharePng('modal')">🖼 图片</button></div>
     ${tabBar}
     ${panels[state.dEmpTab || "sum"]}`;
 }
@@ -1764,8 +1767,15 @@ window._loadHtml2canvas = function () {
   if (window.html2canvas) return Promise.resolve();
   return new Promise((res, rej) => {
     const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-    s.onload = res; s.onerror = () => rej(new Error("html2canvas 加载失败"));
+    // 本地内置文件优先（jsdelivr 国内经常连不上），失败再兜底 CDN
+    s.src = "html2canvas.min.js?v=84";
+    s.onload = res;
+    s.onerror = () => {
+      const s2 = document.createElement("script");
+      s2.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+      s2.onload = res; s2.onerror = () => rej(new Error("html2canvas 加载失败"));
+      document.head.appendChild(s2);
+    };
     document.head.appendChild(s);
   });
 };
