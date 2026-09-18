@@ -8,5 +8,8 @@ __pycache__/
 _probe/
 data/_update_log.txt
 data/data.backup_*.json
+data/wecom_webhook.txt
 fetch.log
 启动看板.vbs
+启动看板管家.vbs
+board_butler.py
