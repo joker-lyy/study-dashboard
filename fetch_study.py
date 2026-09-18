@@ -49,6 +49,31 @@ def classify(name):
 def _sign(n, t):
     return hashlib.sha256(f"{n}{t}{SECRET}".encode()).hexdigest()
 
+def _open(req, timeout=20, tries=3, what="请求"):
+    """带重试的 HTTP 请求（只返回 body 字节）。
+
+    ⚠️ 2026-09-18 事故：云端单次登录请求 20 秒超时就把整轮抓取搞崩了。
+    海外访问国内接口偶发超时/连接重置很常见，所以网络层异常必须重试，
+    否则一整天的自动更新会因为一次抖动白跑。HTTP 4xx 属确定性错误，不重试。
+    """
+    last = None
+    for i in range(1, tries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            if 500 <= e.code < 600 and i < tries:
+                last = e
+                time.sleep(1.5 * i)
+                continue
+            raise
+        except Exception as e:
+            last = e
+            if i < tries:
+                print(f"  [重试 {i}/{tries - 1}] {what}: {str(e)[:90]}", flush=True)
+                time.sleep(1.5 * i)
+    raise last
+
 def login():
     nonce = "".join(random.choices(string.ascii_letters + string.digits, k=16))
     ts = int(time.time() * 1000)
@@ -60,10 +85,12 @@ def login():
     for k, v in [("Content-Type", "application/json"), ("Accept", "*/*"),
                  ("Origin", "https://zhyy.ruipos.com"), ("Referer", "https://zhyy.ruipos.com/")]:
         req.add_header(k, v)
-    with urllib.request.urlopen(req, timeout=20) as r:
-        j = json.loads(r.read())
+    j = json.loads(_open(req, timeout=30, tries=5, what="登录"))
+    tok = (j.get("data") or {}).get("token")
+    if not tok:
+        raise RuntimeError("登录未拿到 token: %s" % str(j)[:200])
     print("login OK")
-    return j["data"]["token"]
+    return tok
 
 def call(tok, path, body):
     req = urllib.request.Request(HOST + path, data=json.dumps(body).encode(), method="POST")
@@ -73,8 +100,7 @@ def call(tok, path, body):
                  ("timeZone", "Asia/Shanghai")]:
         req.add_header(k, v)
     try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            j = json.loads(r.read())
+        j = json.loads(_open(req, timeout=20, tries=3, what=path.split("?")[0]))
         if j.get("status") != 0:
             return None, j.get("message", "status!=0")
         return j.get("data"), None
@@ -279,8 +305,7 @@ def _fetch_puzzle(game):
     req = urllib.request.Request(
         f"{SUPABASE_URL}/rest/v1/puzzle_records?game=eq.{game}&order=time.desc&limit=1000",
         headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        rows = json.loads(r.read())
+    rows = json.loads(_open(req, timeout=25, tries=3, what="Supabase/" + game))
     out = []
     for r in rows:
         try:
@@ -296,14 +321,21 @@ def fetch_evaluations():
     """讲师评估 + 课程满意度：存于拼盘同款 Supabase 的 puzzle_records 表
     （game='lecture_eval' / 'course_survey'）。H5 表单匿名提交（RLS 放行），
     本脚本用 service key 读取后交给看板展示。"""
-    evals = []
-    for r in _fetch_puzzle("lecture_eval"):
-        evals.append({"store": r["store"], "time": r["time"],
-                      "by": r.get("by", ""), "th": r.get("th", ""),
-                      "tech": r.get("tech", ""), "prac": r.get("prac", ""),
-                      "course": r.get("course", "")})
+    evals, surveys = [], []
+    # Supabase 是外部服务，偶发不可用不能拖垮整轮抓取：各自失败只丢自己那块。
+    try:
+        for r in _fetch_puzzle("lecture_eval"):
+            evals.append({"store": r["store"], "time": r["time"],
+                          "by": r.get("by", ""), "th": r.get("th", ""),
+                          "tech": r.get("tech", ""), "prac": r.get("prac", ""),
+                          "course": r.get("course", "")})
+    except Exception as e:
+        print(f"  [警告] 讲师评估拉取失败（本轮置空）: {str(e)[:120]}")
     print(f"讲师评估: {len(evals)} 条")
-    surveys = _fetch_puzzle("course_survey")
+    try:
+        surveys = _fetch_puzzle("course_survey")
+    except Exception as e:
+        print(f"  [警告] 课程满意度拉取失败（本轮置空）: {str(e)[:120]}")
     print(f"课程满意度: {len(surveys)} 条")
     return evals, surveys
 

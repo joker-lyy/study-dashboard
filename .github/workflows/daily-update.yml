@@ -19,7 +19,8 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     # 本地抓一轮约 7 分钟；云端从海外访问国内接口，实测 19~35 分钟且波动较大，给足余量。
-    timeout-minutes: 120
+    # 抓取步骤允许整轮重试一次，所以余量再放大（超时值只影响异常场景）。
+    timeout-minutes: 150
     env:
       # 云端延迟大，把并发调高以缩短总时长（本机仍用脚本默认 8/3）
       STUDY_WORKERS: "16"
@@ -38,12 +39,23 @@ jobs:
 
       # fetch_study.py 只用 Python 标准库（urllib/hashlib/json），无需安装依赖。
       # 输出同时落 fetch.log，失败时由结尾的企微通知摘取原因。
+      # 2026-09-18 事故：海外访问国内接口单次超时就把整轮搞崩 → 这里再加一道
+      # 「整轮重试一次」的保险（脚本内部已有按请求重试，双层兜底）。
       - name: 抓取学习看板数据
         id: fetch
         shell: bash
         run: |
-          python fetch_study.py 2>&1 | tee fetch.log
-          exit ${PIPESTATUS[0]}
+          set -o pipefail
+          for attempt in 1 2; do
+            echo "===== 第 $attempt 次抓取 ====="
+            if python fetch_study.py 2>&1 | tee fetch.log; then
+              exit 0
+            fi
+            echo "!! 第 $attempt 次抓取失败，稍后重试"
+            sleep 10
+          done
+          echo "!! 两次抓取均失败"
+          exit 1
 
       # 抓取允许个别计划失败，但不允许"工作流成功、数据其实没更新"。
       - name: 校验抓取结果
