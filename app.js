@@ -216,32 +216,17 @@ function renderMulti(plans, gnav) {
 }
 
 /* ---------- 应完成日期推算 ----------
-   规则：阶段名含「第X天」时，应完成日期 = 任务发布时间(startDate) + (X-1) 天；
-   区间写法「第7-9天」按区间末天推算；无天数信息的阶段返回空（显示 —） */
-function cnDayNum(name) {
-  if (!name) return null;
-  const rng = name.match(/第\s*(\d+)\s*[-~—]\s*(\d+)\s*天/);
-  if (rng) return +rng[2]; // 区间取截止天
-  const m = name.match(/第\s*(\d+)\s*天/);
-  if (m) return +m[1];
-  const m2 = name.match(/第\s*([零一二三四五六七八九十]+)\s*天/);
-  if (!m2) return null;
-  const cn = { "零": 0, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9 };
-  const str = m2[1];
-  if (str === "十") return 10;
-  if (str.includes("十")) {
-    const [a, b] = str.split("十");
-    return (a ? cn[a] : 1) * 10 + (b ? cn[b] : 0);
-  }
-  return cn[str] ?? null;
-}
+   规则（Rain 2026-09-18 定）：一个阶段算一天。
+   应完成日期 = 任务发布时间(startDate) + (阶段在该计划 stageStats 中的序号 - 1) 天。
+   例：182期发布 9-14，10 个阶段 → 9-14、9-15 …… 9-23（与计划结束日一致） */
 function dueDateOf(p, stageName) {
   if (!p || !p.startDate) return "";
-  const n = cnDayNum(stageName);
-  if (!n) return "";
+  const list = p.stageStats || [];
+  const idx = list.findIndex(x => (x.phaseName || "") === (stageName || ""));
+  if (idx < 0) return "";
   const dt = new Date(p.startDate + "T00:00:00");
   if (isNaN(dt.getTime())) return "";
-  dt.setDate(dt.getDate() + n - 1);
+  dt.setDate(dt.getDate() + idx);
   const pad = x => String(x).padStart(2, "0");
   return dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate());
 }
@@ -414,7 +399,7 @@ function renderCat() {
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}
     </div>
     ${cards}
-    ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况</div><table><tr><th>阶段</th><th>应完成日期</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
+    ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况；应完成日期按「一个阶段 = 一天」推算（任务发布日 = 第 1 阶段）</div><table><tr><th>阶段</th><th>应完成日期</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
     <div class="sec"${state.sub === "全部" ? ' style="margin-left:calc(50% - 50vw + 24px);margin-right:calc(50% - 50vw + 24px)"' : ""}>
       <h3>二级汇总</h3>
       <div class="subtabs">
