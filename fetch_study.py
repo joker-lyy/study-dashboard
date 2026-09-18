@@ -298,6 +298,89 @@ def fetch_maps(tok):
         maps = list(ex.map(fetch_map_emps, maps))
     return maps
 
+def is_direct_emp(e):
+    """直营组员工判定：组织链路含「培训组」且含「直营组」；
+    测试门店（直营）是内部测试账号，明确排除（2026-09-19 用户拍板）。"""
+    org = e.get("organizeNames") or ""
+    store = e.get("storeNames") or e.get("storeName") or ""
+    return "培训组" in org and "直营组" in org and "测试" not in store
+
+def fetch_direct_maps(tok, maps):
+    """直营组学习地图三级明细（2026-09-19 新增「直营学习明细」板块数据源）：
+    对直营组员工 × 其参与的每张地图，抓
+      ①learnStatisticsEmployeeMapDetails        学员在地图的汇总
+      ②learnStatisticsEmployeeStageMapDetails   学员在地图的阶段列表
+      ③learnStatisticsEmployeeStageTaskMapDetails 每阶段的任务明细（需 stageId + startDate/endDate）
+    输出 data["directMaps"] = {"emps": {"<employeeId>": {"name/store/position/role/maps":[...]}}}
+    计划任务明细不在这里抓——plans[].empDetails 已有全量，前端直接按 employeeId 关联。"""
+    pairs = []  # (emp样本, map)
+    seen = set()
+    for mp in maps:
+        for e in mp.get("emps") or []:
+            if not is_direct_emp(e):
+                continue
+            key = (e["employeeId"], mp["mapId"])
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append((e, mp))
+    print(f"[直营明细] 直营组员工-地图对: {len(pairs)} 对")
+    wide = {"startDate": "2020-01-01", "endDate": "2029-12-31"}
+
+    def fetch_pair(item):
+        e, mp = item
+        eid, mid = e["employeeId"], mp["mapId"]
+        rec = {"mapId": mid, "mapName": mp.get("mapName"),
+               "progress": e.get("completionSchedule"), "status": e.get("status"),
+               "stageName": e.get("stageName"), "learningPeriod": e.get("learningPeriod"),
+               "issueDate": e.get("issueDate"), "stages": []}
+        # ① 汇总
+        d, err = call(tok, "/web/reportForm/learnStatisticsEmployeeMapDetails?version=1",
+                      {"mapId": mid, "employeeId": eid, **wide})
+        if d:
+            rec["summary"] = d
+        # ② 阶段列表
+        d, err = call(tok, "/web/reportForm/learnStatisticsEmployeeStageMapDetails?version=1",
+                      {"mapId": mid, "employeeId": eid, **wide})
+        stages = d if isinstance(d, list) else []
+        # ③ 每阶段任务明细
+        for st in stages:
+            sd, serr = call(tok, "/web/reportForm/learnStatisticsEmployeeStageTaskMapDetails?version=1",
+                            {"mapId": mid, "employeeId": eid, "stageId": st.get("stageId"), **wide})
+            rec["stages"].append({
+                "stageId": st.get("stageId"), "stageName": st.get("stageName"),
+                "status": st.get("status"), "finishCond": st.get("finishCond"),
+                "tasks": sd if isinstance(sd, list) else [],
+            })
+        if not stages:
+            return eid, rec
+        return eid, rec
+
+    results = {}
+    n_ok = 0
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        futs = [ex.submit(fetch_pair, it) for it in pairs]
+        for f in as_completed(futs):
+            try:
+                eid, rec = f.result()
+                results.setdefault(str(eid), {"maps": []})["maps"].append(rec)
+                n_ok += 1
+            except Exception as ex2:
+                print(f"  [直营明细失败] {str(ex2)[:100]}")
+    # 补人员档案（姓名/门店/岗位）——从计划学员列表与地图学员列表取最全的一条
+    profiles = {}
+    for mp in maps:
+        for e in mp.get("emps") or []:
+            eid = str(e.get("employeeId"))
+            if eid in results and eid not in profiles and is_direct_emp(e):
+                profiles[eid] = {"name": e.get("employeeName"), "store": e.get("storeNames") or e.get("storeName"),
+                                 "position": e.get("positionName"), "role": e.get("roleNames")}
+    for eid, prof in profiles.items():
+        results[eid].update(prof)
+    total_maps = sum(len(v["maps"]) for v in results.values())
+    print(f"[直营明细] 完成: {len(results)} 人 / {total_maps} 张地图对（请求对 {len(pairs)}）")
+    return {"emps": results}
+
 SUPABASE_URL = "https://furiqmhvflnjllrwfhyw.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1cmlxbWh2ZmxuamxscndmaHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTY4MzU3NywiZXhwIjoyMTAxMjU5NTc3fQ.XVZGKGRWhaLG7ZyaYJzPmGI8SJxxBqYZy-fq7bvKz_E"  # service_role，仅本机脚本使用，绝不出现在前端
 
@@ -381,11 +464,14 @@ def main():
     print("归类结果:", json.dumps(cats, ensure_ascii=False))
 
     ev, cs = fetch_evaluations()
+    maps = fetch_maps(tok)
+    direct = fetch_direct_maps(tok, maps)
     data = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
             "evaluations": ev,
             "courseSurveys": cs,
             "resigned": fetch_resigned(tok),
-            "maps": fetch_maps(tok),
+            "maps": maps,
+            "directMaps": direct,
             "categories": list(dict.fromkeys([c for c, _ in CATEGORY_RULES] + [k for k in cats if k not in [x for x, _ in CATEGORY_RULES]])),
             "plans": []}
 

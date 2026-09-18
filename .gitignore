@@ -13,3 +13,6 @@ fetch.log
 启动看板.vbs
 启动看板管家.vbs
 board_butler.py
+
+data/_butler_log.txt
+data/_update_log.txt

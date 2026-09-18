@@ -1282,6 +1282,263 @@ function renderOpen() {
   document.getElementById("main").innerHTML = `<div class="sec"><h3>公开课学习（自由学习课程集合）</h3><div class="empty">公开课为首页导航自由学习，不强制统计；后续可接入课程库与学时排行（staffCourseHoursRanking）</div></div>`;
 }
 
+/* ---------- 直营学习明细（培训组-直营组 8 店，2026-09-19） ----------
+   口径：学习率 = 课程已完成项目 ÷ 课程应完成项目（免修任务剔除，与计划板块一致）
+   任务形态：视频(2,8) / 文件(1,7,10) / 考试(4) / 实操上传(5)；面授签到(3)、问卷(6)、练习(11) 单独标注
+   数据：计划任务 = plans[].empDetails（已有全量）；学习地图 = data.directMaps.emps（新增抓取） */
+const D_FORM = { 1: "文件", 2: "视频", 7: "文件", 8: "视频", 10: "文件", 4: "考试", 5: "实操" };
+const D_FORMS = ["视频", "文件", "考试", "实操"];
+const D_TYPE_NAME = { 3: "面授/签到", 6: "问卷", 11: "练习" };
+// 地图任务枚举与计划不同（2026-09-19 实测：status 0=未开始/2=进行中/3=已完成）：
+// 2=岗位学习课程（视频）3=考核 9=练习题库 —— 3 与计划的面授枚举冲突，必须独立映射
+const D_MAP_FORM = { 2: "视频", 3: "考试" };
+const D_MAP_TYPE_NAME = { 9: "练习题库" };
+function dFormOf(type) { return D_FORM[type] || null; }
+function dMapFormOf(type) { return D_MAP_FORM[type] || null; }
+function dTypeName(type) { return D_FORM[type] || D_TYPE_NAME[type] || "其他"; }
+function dMapTypeName(type) { return D_MAP_FORM[type] || D_MAP_TYPE_NAME[type] || "其他"; }
+// 单任务四形态格子：属于该形态 → ✓(绿)/✗(红)，否则 —
+function dFormCell(form, type, done) {
+  if (dFormOf(type) !== form) return `<span style="color:#c4cad6">—</span>`;
+  return done ? `<span style="color:#1aad19;font-weight:700">✓</span>` : `<span style="color:#e64340;font-weight:700">✗</span>`;
+}
+function dMapFormCell(form, type, done) {
+  if (dMapFormOf(type) !== form) return `<span style="color:#c4cad6">—</span>`;
+  return done ? `<span style="color:#1aad19;font-weight:700">✓</span>` : `<span style="color:#e64340;font-weight:700">✗</span>`;
+}
+// 直营员工索引（构建一次）：{emps:[eid], byStore:{店:[eid]}, prof:{eid:{...}}, plans:{eid:[{plan,det}]}, mapsAv:{eid:{avg,n,done}}}
+function directIndex() {
+  if (window.__directIdx) return window.__directIdx;
+  const dm = (DATA.directMaps || {}).emps || {};
+  // 离职判定：从计划学员列表取 empStatus（地图接口不含该字段）
+  const empStatusMap = {};
+  (DATA.plans || []).forEach(p => (p.emps || []).forEach(e => { empStatusMap[String(e.employeeId)] = e.empStatus; }));
+  const prof = {}, byStore = {};
+  Object.keys(dm).forEach(eid => {
+    const rec = dm[eid] || {};
+    const maps = rec.maps || [];
+    const progOf = m => { const n = parseFloat(m.progress); return isNaN(n) ? 0 : n; };
+    const mAvg = maps.length ? maps.reduce((a, m) => a + progOf(m), 0) / maps.length : null;
+    // 跨计划任务聚合
+    const pls = [];
+    (DATA.plans || []).forEach(p => {
+      if (p.fetchError) return;
+      const det = p.empDetails && p.empDetails[String(eid)];
+      if (det) pls.push({ plan: p, det });
+    });
+    pls.sort((a, b) => (b.plan.startDate || "").localeCompare(a.plan.startDate || ""));
+    const pDone = pls.reduce((a, x) => a + x.det.done, 0), pTotal = pls.reduce((a, x) => a + x.det.total, 0);
+    const st = rec.store || "无门店";
+    prof[eid] = {
+      name: rec.name || ("#" + eid), store: st, position: rec.position || "", role: rec.role || "",
+      empStatus: empStatusMap[eid] || "zc",
+      plans: pls, pDone, pTotal, pRate: pTotal ? pDone / pTotal * 100 : null,
+      maps, mAvg,
+    };
+    (byStore[st] = byStore[st] || []).push(eid);
+  });
+  const emps = Object.keys(prof);
+  // 门店排序：人数多的在前
+  const stores = Object.keys(byStore).sort((a, b) => byStore[b].length - byStore[a].length);
+  window.__directIdx = { emps, byStore, stores, prof };
+  return window.__directIdx;
+}
+function renderDirect() {
+  const el = document.getElementById("main");
+  const idx = directIndex();
+  if (!idx.emps.length) {
+    el.innerHTML = `<div class="sec"><h3>直营学习明细</h3><div class="empty">暂无直营组地图明细数据，请更新后查看（fetch_study.py 新增 directMaps 抓取）</div></div>`;
+    return;
+  }
+  // 汇总
+  let tD = 0, tT = 0, mSum = 0, mN = 0;
+  idx.emps.forEach(eid => {
+    const P = idx.prof[eid];
+    tD += P.pDone; tT += P.pTotal;
+    if (P.mAvg != null) { mSum += P.mAvg * P.maps.length; mN += P.maps.length; }
+  });
+  const rate = tT ? tD / tT * 100 : 0, mAvg = mN ? mSum / mN : 0;
+  const storeCards = idx.stores.map(st => {
+    const eids = idx.byStore[st];
+    let d = 0, t = 0, ms = 0, mn = 0;
+    eids.forEach(eid => {
+      const P = idx.prof[eid];
+      d += P.pDone; t += P.pTotal;
+      if (P.mAvg != null) { ms += P.mAvg * P.maps.length; mn += P.maps.length; }
+    });
+    const r = t ? d / t * 100 : 0, ma = mn ? ms / mn : 0;
+    return `<div class="card" style="cursor:pointer" onclick="openDirectStore('${esc(st).replace(/'/g, "\\'")}')">
+      <div class="k">${esc(st)}</div>
+      <div class="v">${eids.length}<small> 人</small></div>
+      <div style="font-size:12px;color:var(--t2);margin-top:6px">任务完成率 ${barHtml(r)}</div>
+      <div style="font-size:12px;color:var(--t2)">地图进度 ${barHtml(ma)}</div>
+    </div>`;
+  }).join("");
+  el.innerHTML = `
+    <div class="sec">
+      <h3>直营学习明细（培训组-直营组）</h3>
+      <div style="font-size:12px;color:var(--t2);margin:-4px 0 10px">
+        口径：学习率 = 课程已完成项目 ÷ 课程应完成项目（免修任务剔除）· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
+      </div>
+      <div class="cards">
+        <div class="card"><div class="k">直营门店</div><div class="v">${idx.stores.length}<small> 家</small></div></div>
+        <div class="card"><div class="k">直营伙伴</div><div class="v">${idx.emps.length}<small> 人</small></div></div>
+        <div class="card"><div class="k">任务完成率</div><div class="v">${rate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${tD} / ${tT} 项</div></div>
+        <div class="card"><div class="k">地图平均进度</div><div class="v">${mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">共 ${mN} 张地图在学</div></div>
+      </div>
+      <div class="cards" style="margin-top:10px">${storeCards}</div>
+    </div>`;
+}
+/* 门店弹窗：该店伙伴列表 + 岗位/状态筛选 */
+function directSetPos(v) { state.dPos = v; renderDirectStoreModal(); }
+function directSetSt(v) { state.dEmpStatus2 = v; renderDirectStoreModal(); }
+function openDirectStore(store) {
+  state.dStore = store; state.dPos = "全部"; state.dEmpStatus2 = "全部";
+  window.__directBack = "store";
+  document.getElementById("mTitle").textContent = store + " · 伙伴学习明细";
+  renderDirectStoreModal();
+  document.getElementById("mask").classList.add("show");
+}
+function renderDirectStoreModal() {
+  const idx = directIndex();
+  const store = state.dStore;
+  const eids = (idx.byStore[store] || []).slice();
+  const positions = [...new Set(eids.map(eid => idx.prof[eid].position).filter(Boolean))].sort();
+  let list = eids.filter(eid => {
+    const P = idx.prof[eid];
+    if (state.dPos !== "全部" && P.position !== state.dPos) return false;
+    if (state.dEmpStatus2 === "在职" && P.empStatus !== "zc") return false;
+    if (state.dEmpStatus2 === "离职" && P.empStatus === "zc") return false;
+    return true;
+  });
+  // 排序：地图进度高的在前
+  list.sort((a, b) => (idx.prof[b].mAvg || 0) - (idx.prof[a].mAvg || 0));
+  const rows = list.map(eid => {
+    const P = idx.prof[eid];
+    const st = P.empStatus === "zc" ? `<span class="badge b-green">在职</span>` : `<span class="badge b-gray">离职</span>`;
+    return `<tr style="cursor:pointer" onclick="openDirectEmp('${eid}')">
+      <td><b>${esc(P.name)}</b></td><td>${esc(P.position || "—")}</td>
+      <td>${P.pRate == null ? "—" : barHtml(P.pRate)} <span style="color:var(--t2);font-size:12px">${P.pDone}/${P.pTotal}</span></td>
+      <td>${P.mAvg == null ? "—" : barHtml(P.mAvg)} <span style="color:var(--t2);font-size:12px">${P.maps.length} 张</span></td>
+      <td>${st}</td>
+      <td><span style="color:#186BEB">明细 ›</span></td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="empty">无符合筛选条件的伙伴</td></tr>`;
+  const sel = (opts, cur, fn) => `<select onchange="${fn}(this.value)" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+    ${opts.map(o => `<option value="${esc(o)}" ${cur === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  document.getElementById("mBody").innerHTML = `
+    <div class="filters">
+      ${sel(["全部", ...positions], state.dPos, "directSetPos")}
+      ${sel(["在职", "全部", "离职"], state.dEmpStatus2 || "在职", "directSetSt")}
+      <span style="font-size:12px;color:var(--t2)">共 ${list.length} 人 · 点击行看学习档案</span>
+    </div>
+    <table>
+      <tr><th>姓名</th><th>岗位</th><th>任务完成率（已完成/应完成）</th><th>地图平均进度</th><th>状态</th><th></th></tr>
+      ${rows}
+    </table>`;
+}
+/* 伙伴档案弹窗：①汇总 ②学习任务（按计划分组） ③学习地图 */
+function dSetForm(v) { state.dForm = v; renderDirectEmpModal(); }
+function openDirectEmp(eid) {
+  state.dEmp = String(eid); state.dForm = "全部";
+  window.__directBack = "emp";
+  document.getElementById("mTitle").textContent = (directIndex().prof[String(eid)] || {}).name + " · 学习档案";
+  renderDirectEmpModal();
+  document.getElementById("mask").classList.add("show");
+}
+// 任务形态筛选：全匹配（全部）/只看该形态（含未完成）
+function dTaskPass(t) {
+  if (state.dForm === "全部") return true;
+  return dFormOf(t[1]) === state.dForm;
+}
+function renderDirectEmpModal() {
+  const idx = directIndex();
+  const P = idx.prof[state.dEmp];
+  if (!P) return;
+  // ① 汇总：分分类
+  const byCat = {};
+  P.plans.forEach(({ plan, det }) => {
+    const c = plan.category || "其他";
+    byCat[c] = byCat[c] || { d: 0, t: 0 };
+    byCat[c].d += det.done; byCat[c].t += det.total;
+  });
+  const catChips = Object.entries(byCat).map(([c, v]) =>
+    `<div class="card" style="min-width:150px"><div class="k">${esc(c)}</div><div class="v" style="font-size:20px">${v.t ? (v.d / v.t * 100).toFixed(1) : "—"}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${v.d}/${v.t} 项</div></div>`).join("");
+  const mDone = P.maps.filter(m => parseFloat(m.progress) >= 100).length;
+  const back = `<button class="btn" style="padding:6px 12px;font-size:12px;background:var(--navy)" onclick="openDirectStore('${esc(P.store).replace(/'/g, "\\'")}')">← 返回门店</button>`;
+  // ② 学习任务：按计划分组（形态四列）
+  const formBar = `<div class="filters">${["全部", ...D_FORMS].map(f =>
+    `<button class="${(state.dForm || "全部") === f ? "active" : ""}" onclick="dSetForm('${f}')">${f}${f === "全部" ? "" : "（含未完成）"}</button>`).join("")}</div>`;
+  const planBlocks = P.plans.map(({ plan, det }) => {
+    const rows = [];
+    (det.stages || []).forEach(st => {
+      (st.t || []).filter(dTaskPass).forEach(t => {
+        const done = t[2] === "W";
+        const graded = t[1] === 4 || t[1] === 5;
+        rows.push(`<tr>
+          <td style="color:var(--t2);font-size:12px;white-space:nowrap">${esc(st.n || "")}</td>
+          <td>${esc(t[0])}</td>
+          ${D_FORMS.map(f => `<td style="text-align:center">${dFormCell(f, t[1], done)}</td>`).join("")}
+          <td>${esc(dTypeName(t[1]))}</td>
+          <td>${done ? `<span style="color:#1aad19;font-weight:600">已完成</span>` : `<span style="color:#e64340;font-weight:600">未完成</span>`}</td>
+          <td>${graded ? scoreCell(t) : (t[3] != null && t[3] !== "-" ? esc(t[3]) : "—")}</td>
+          <td style="color:var(--t2);font-size:12px;white-space:nowrap">${t[5] && t[5] !== "-" ? esc(String(t[5]).slice(0, 16)) : "—"}</td>
+        </tr>`);
+      });
+    });
+    if (!rows.length) return "";
+    const head = `<tr><th>阶段</th><th>任务</th>${D_FORMS.map(f => `<th style="text-align:center">${f}</th>`).join("")}<th>类型</th><th>状态</th><th>分数</th><th>完成时间</th></tr>`;
+    const openAttr = det.done < det.total ? " open" : "";
+    return `<details${openAttr} style="margin-bottom:8px">
+      <summary style="cursor:pointer;font-weight:600;padding:6px 0">${esc(plan.planName)} <span style="color:var(--t2);font-weight:400;font-size:12px">（${plan.category || ""} · ${plan.startDate || "—"}）</span>
+        <span style="float:right;font-size:12px;color:var(--t2)">${det.done}/${det.total} 项 ${barHtml(det.total ? det.done / det.total * 100 : 0)}</span></summary>
+      <div style="overflow:auto"><table>${head}${rows.join("")}</table></div>
+    </details>`;
+  }).join("") || `<div class="empty">该伙伴暂无培训计划任务记录</div>`;
+  // ③ 学习地图
+  const mapBlocks = P.maps.map(m => {
+    const prog = parseFloat(m.progress) || 0;
+    const rows = [];
+    (m.stages || []).forEach(st => {
+      (st.tasks || []).filter(tk => state.dForm === "全部" || dMapFormOf(tk.taskType) === state.dForm).forEach(tk => {
+        const done = String(tk.status) === "3";
+        rows.push(`<tr>
+          <td style="color:var(--t2);font-size:12px;white-space:nowrap">${esc(st.stageName || "")}</td>
+          <td>${esc(tk.taskName || "")}</td>
+          ${D_FORMS.map(f => `<td style="text-align:center">${dMapFormCell(f, tk.taskType, done)}</td>`).join("")}
+          <td>${esc(dMapTypeName(tk.taskType))}</td>
+          <td>${done ? `<span style="color:#1aad19;font-weight:600">已完成</span>` : String(tk.status) === "2" ? `<span style="color:#e69119;font-weight:600">进行中</span>` : `<span style="color:#e64340;font-weight:600">未开始</span>`}</td>
+          <td>${tk.realScore != null && tk.realScore !== "-" ? esc(String(tk.realScore)) : "—"}</td>
+          <td style="color:var(--t2);font-size:12px;white-space:nowrap">${tk.finishTime && tk.finishTime !== "-" ? esc(String(tk.finishTime).slice(0, 16)) : "—"}</td>
+        </tr>`);
+      });
+    });
+    const head = `<tr><th>阶段</th><th>任务</th>${D_FORMS.map(f => `<th style="text-align:center">${f}</th>`).join("")}<th>类型</th><th>状态</th><th>分数</th><th>完成时间</th></tr>`;
+    const st2 = prog >= 100 ? ["已完成", "b-green"] : prog > 0 ? ["进行中", "b-orange"] : ["未开始", "b-gray"];
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <b>${esc(m.mapName || "")}</b><span class="badge ${st2[1]}">${st2[0]}</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--t2)">当前阶段：${esc(m.stageName || "—")}</span>
+        <span style="min-width:160px">${barHtml(prog)}</span>
+      </div>
+      ${rows.length ? `<div style="overflow:auto;margin-top:8px"><table>${head}${rows.join("")}</table></div>` : `<div class="empty" style="padding:6px 0">该地图暂无阶段任务明细</div>`}
+    </div>`;
+  }).join("") || `<div class="empty">该伙伴暂未加入任何学习地图</div>`;
+  document.getElementById("mBody").innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">${back}
+      <span style="font-size:13px;color:var(--t2)">${esc(P.store)} · ${esc(P.position || "")} ${P.role ? "· " + esc(P.role) : ""}</span></div>
+    <h4 style="margin:6px 0 6px">① 汇总（任务口径：已完成/应完成项目）</h4>
+    <div class="cards" style="margin-bottom:4px">
+      <div class="card" style="min-width:150px"><div class="k">全部任务</div><div class="v" style="font-size:20px">${P.pRate == null ? "—" : P.pRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.pDone}/${P.pTotal} 项</div></div>
+      ${catChips}
+      <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px">${P.mAvg == null ? "—" : P.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.maps.length} 张（完成 ${mDone}）</div></div>
+    </div>
+    <h4 style="margin:12px 0 6px">② 学习任务明细（线上线下 / 各组派发的培训计划）</h4>
+    ${formBar}
+    ${planBlocks}
+    <h4 style="margin:12px 0 6px">③ 学习地图明细</h4>
+    ${mapBlocks}`;
+}
+
 /* ---------- 主渲染 ---------- */
 function render() {
   // 隐藏平台上还没有数据的分类（学员/门店全空，如"裂变加盟商培训"配置好后会自动出现）
@@ -1289,9 +1546,12 @@ function render() {
     const ps = (DATA.plans || []).filter(p => p.category === c);
     return ps.some(p => (p.emps || []).length > 0 || (p.storeStats || []).length > 0);
   });
-  const tabs = [["概述", ""], ...visibleCats.map(c => [c, ""]), ["评价管理", ""], ["离职管理档案", ""]];
+  const tabs = [["概述", ""], ...visibleCats.map(c => [c, ""]), ["直营学习明细", ""], ["评价管理", ""], ["离职管理档案", ""]];
   document.getElementById("mainTabs").innerHTML = tabs.map(([t]) => {
-    const n = t === "概述" || t === "评价管理" || t === "离职管理档案" ? "" : `<span class="n">${plansInRange(t).length}</span>`;
+    let n;
+    if (t === "概述" || t === "评价管理" || t === "离职管理档案") n = "";
+    else if (t === "直营学习明细") n = `<span class="n">${(window.__directIdx || directIndex()).emps.length}</span>`;
+    else n = `<span class="n">${plansInRange(t).length}</span>`;
     return `<button class="${state.tab === t ? "active" : ""}" onclick="state.tab='${t}';state.planIdx=0;render()">${t}${n}</button>`;
   }).join("");
   if (!tabs.some(([t]) => t === state.tab)) { state.tab = "概述"; state.planIdx = 0; }
@@ -1300,6 +1560,7 @@ function render() {
   else if (state.tab === "离职管理档案") renderResign();
   else if (state.tab === "公开课学习") renderOpen();
   else if (state.tab === "员工培训/晋升") renderPromo();
+  else if (state.tab === "直营学习明细") renderDirect();
   else { state.cat = state.tab; renderCat(); }
   // 学习地图/培训计划 二级切换（仅员工培训/晋升）
   const bar = document.getElementById("promoBar");
