@@ -8,3 +8,5 @@ __pycache__/
 _probe/
 data/_update_log.txt
 data/data.backup_*.json
+fetch.log
+启动看板.vbs

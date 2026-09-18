@@ -37,11 +37,17 @@ jobs:
           python-version: "3.11"
 
       # fetch_study.py 只用 Python 标准库（urllib/hashlib/json），无需安装依赖。
+      # 输出同时落 fetch.log，失败时由结尾的企微通知摘取原因。
       - name: 抓取学习看板数据
-        run: python fetch_study.py
+        id: fetch
+        shell: bash
+        run: |
+          python fetch_study.py 2>&1 | tee fetch.log
+          exit ${PIPESTATUS[0]}
 
       # 抓取允许个别计划失败，但不允许"工作流成功、数据其实没更新"。
       - name: 校验抓取结果
+        id: verify
         shell: bash
         run: |
           python - <<'PY'
@@ -83,6 +89,7 @@ jobs:
           PY
 
       - name: 提交并发布数据
+        id: publish
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -105,3 +112,15 @@ jobs:
           fi
           git push origin main
           echo "已发布，GitHub Pages 1-2 分钟后生效"
+
+      # 无论成功失败都推企微，消息统一带【学习看板】标识，便于和其他看板区分。
+      # webhook 存在仓库 Secret 里（仓库是公开的，绝不能写进本文件）。
+      - name: 推送更新结果到企业微信
+        if: always()
+        env:
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          JOB_STATUS: ${{ job.status }}
+          FETCH_OUTCOME: ${{ steps.fetch.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        run: python notify_wecom.py --status "$JOB_STATUS"
