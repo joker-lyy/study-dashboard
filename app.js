@@ -86,10 +86,18 @@ function isGradedT(t) {
     (t[3] != null && t[3] !== "-" && !isNaN(+t[3])));
 }
 function examPassT(t) {
-  if (!t || t[2] !== "W" || t[4] === "否") return false;
+  // 合格 = 已上传(W) + 老师已阅卷 + 及格（有分数 ≥80，无分数需平台判「是」）
+  // 「待阅卷」= 老师还没打分 → 统计上算未完成（明细里单独标黄色「待阅卷」）
+  if (!t || t[2] !== "W" || t[4] === "否" || t[4] === "待阅卷") return false;
   const n = +t[3];
   if (t[3] != null && t[3] !== "-" && !isNaN(n)) return n >= 80;
-  return true;
+  return t[4] === "是";
+}
+// 任务完成标签（仅展示用；统计口径见 examPassT）：待阅卷单独标出，但计入未完成
+function taskLabel(t) {
+  if (t && t[2] === "W") return { txt: "✓ 已完成", ok: true, pending: false };
+  if (t && t[4] === "待阅卷") return { txt: "⏳ 待阅卷（未完成）", ok: false, pending: true };
+  return { txt: "✗ 未完成", ok: false, pending: false };
 }
 function stageTasksOf(p, e, stageName) {
   const det = p.empDetails && p.empDetails[String(e.employeeId)];
@@ -141,7 +149,7 @@ function aggregate(plan, keyFn) {
     else map[k].todo++;
   });
   const arr = Object.values(map);
-  // 完成率 = 任务进度口径（已完成任务 ÷ 应完成任务），无明细时回退人数口径
+  // 完成率 = 必修课+考核口径（empStat 内已统一，2026-09-18），无明细时回退人数口径
   arr.forEach(a => a.rate = a.hasT && a.tT ? a.tD / a.tT * 100 : (a.total ? a.done / a.total * 100 : 0));
   arr.sort((a, b) => b.rate - a.rate || b.total - a.total);
   return arr;
@@ -328,10 +336,19 @@ function setRange(r) {
 }
 
 /* ---------- 员工真实进度（以员工明细接口为准） ---------- */
+// 2026-09-18 口径全局统一（Rain 定稿）：完成率/完成状态只认「必修课 + 考核」——
+// 必修课(3/8)=状态W；考核(考试/打分作业/拼盘截图)=合格才算（打分≥80、未判否），
+// 「待阅卷」不算完成；无判分的普通作业/表单不计入分母。
+// 平台 det.done/det.total 把待阅卷也算完成（182期第四天虚报100%），不再直接采信。
 function empStat(p, e) {
   const det = p.empDetails && p.empDetails[String(e.employeeId)];
   if (!det || det.total == null) return null;
-  const done = det.done || 0, total = det.total || 0;
+  let total = 0, done = 0;
+  (det.stages || []).forEach(s => (s.t || []).forEach(t => {
+    if (isGradedT(t)) { total++; if (examPassT(t)) done++; }
+    else if (t[1] === 3 || t[1] === 8) { total++; if (t[2] === "W") done++; }
+  }));
+  if (!total) { total = det.total || 0; done = det.done || 0; } // 明细里没任务 → 退回平台数
   const status = total > 0 && done >= total ? 2 : done > 0 ? 1 : 0;
   return { det, done, total, rate: total ? done / total * 100 : 0, status };
 }
@@ -349,7 +366,7 @@ function renderOverview() {
       emps++;
       if (st ? st.status === 2 : e.trainingStatus === 2) done++;
     }));
-    // 完成率 = 任务进度口径（已完成任务 ÷ 应完成任务），无明细回退人数口径
+    // 完成率 = 必修课+考核口径（empStat 内已统一，2026-09-18），无明细回退人数口径
     const rate = hasT && tT ? tD / tT * 100 : (emps ? done / emps * 100 : 0);
     const latest = plans.slice(0, 5).map(p => {
       // 整体完成率与卡片同口径：任务进度优先（平台字段为0时兜底）
@@ -403,7 +420,7 @@ function renderCat() {
   const timeCard = `<div class="card"><div class="k">学习时间</div><div class="v" style="font-size:14px;line-height:2;text-align:left">开始：${esc(vFrom || "-")}<br>结束：${esc(vTo || "-")}</div></div>`;
 
   // 概述卡片
-  // 完成率：统一任务进度口径（已完成任务÷应完成任务）；无明细才回退平台字段
+  // 完成率：必修课+考核口径（empStat 内已统一，2026-09-18）；无明细才回退平台字段
   let cardRate = 0;
   {
     let tT = 0, tD = 0, hasT = false;
@@ -610,10 +627,11 @@ function flatDetailTable(p, emps) {
     const scoreStr = exams.length ? exams.map(t => scoreCell(t, false)).join("</div><div>") : "—";
     const detail = ts.map(t => {
       const [name, type, st, score, isPass] = t;
-      const ok = st === "W";
+      const lb = taskLabel(t);
       let extra = "";
-      if (type === 4 || isExamT(t)) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
-      return `<div style="padding:1px 0;color:${ok ? "var(--t1)" : "#e64340"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
+      if ((type === 4 || isExamT(t)) && !lb.pending) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
+      const col = lb.ok ? "var(--t1)" : lb.pending ? "#e6a23c" : "#e64340";
+      return `<div style="padding:1px 0;color:${col}">${esc(name)}：${lb.txt}${extra}</div>`;
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
     const fins = ts.filter(t => t[2] === "W" && t[5]).map(t => t[5]).sort();
     const finStr = fins.length ? fins[fins.length - 1] : "—";
@@ -676,13 +694,12 @@ function storeRankTable(p) {
 /* ---------- 阶段学员明细弹窗 ---------- */
 function taskBadge(t) {
   const [name, type, st, score, isPass] = t;
-  const ok = st === "W";
+  const lb = taskLabel(t);
   const label = TYPE_NAME[type] || "任务";
-  let txt = `${label}${ok ? "✓" : "✗"}`;
-  let cls = ok ? "b-green" : "b-orange";
+  let cls = lb.ok ? "b-green" : lb.pending ? "b-orange" : "b-orange";
   let extra = "";
-  if (type === 4) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
-  return `<span class="badge ${cls}" style="margin:2px 4px 2px 0">${esc(name)}（${label}）${ok ? "已完成" : "未完成"}${extra}</span>`;
+  if (type === 4 && !lb.pending) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
+  return `<span class="badge ${cls}" style="margin:2px 4px 2px 0">${esc(name)}（${label}）${lb.ok ? "已完成" : lb.pending ? "待阅卷" : "未完成"}${extra}</span>`;
 }
 function openStage(stageName) {
   state.stageKey = stageName;
@@ -759,13 +776,14 @@ function renderStageModal() {
     // 任务明细：一行一个课题「课题名：完成情况」
     const detail = ts.map(t => {
       const [name, type, st, score, isPass] = t;
-      const ok = st === "W";
-      let extra = "", bad = !ok;
-      if (type === 4 || isExamT(t)) {
+      const lb = taskLabel(t);
+      let extra = "", bad = !lb.ok;
+      if ((type === 4 || isExamT(t)) && !lb.pending) {
         if (score !== "-" && score != null && !isNaN(+score)) { extra = `（${score}分${isPass === "否" ? "，未过" : ""}）`; if (+score < 80 || +score === 0 || isPass === "否") bad = true; }
         else if (type === 4) extra = "（未考）";
       }
-      return `<div style="padding:1px 0;color:${bad ? "#e64340" : "var(--t1)"}">${esc(name)}：${ok ? "✓ 已完成" : "✗ 未完成"}${extra}</div>`;
+      const col = lb.ok ? "var(--t1)" : lb.pending ? "#e6a23c" : "#e64340";
+      return `<div style="padding:1px 0;color:${col}">${esc(name)}：${lb.txt}${extra}</div>`;
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
     return `<tr>
       <td>${esc(e.empName)}</td>
@@ -780,7 +798,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。<b>「已完成」= 必修课全完成 且 考核全部合格（拼盘截图等需老师打分 ≥80，待阅卷 = 未完成）。</b></div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；⏳待阅卷 单独标注，统计上计入未完成。</b></div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
