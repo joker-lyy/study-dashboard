@@ -215,6 +215,37 @@ function renderMulti(plans, gnav) {
     <div class="sec"><h3>所选课程明细</h3><table><tr><th>课程</th><th>应学人数</th><th>已完成</th><th>完成率</th><th>考试平均分</th><th>参训门店</th><th>参与率</th></tr>${tbl}</table></div>`;
 }
 
+/* ---------- 应完成日期推算 ----------
+   规则：阶段名含「第X天」时，应完成日期 = 任务发布时间(startDate) + (X-1) 天；
+   区间写法「第7-9天」按区间末天推算；无天数信息的阶段返回空（显示 —） */
+function cnDayNum(name) {
+  if (!name) return null;
+  const rng = name.match(/第\s*(\d+)\s*[-~—]\s*(\d+)\s*天/);
+  if (rng) return +rng[2]; // 区间取截止天
+  const m = name.match(/第\s*(\d+)\s*天/);
+  if (m) return +m[1];
+  const m2 = name.match(/第\s*([零一二三四五六七八九十]+)\s*天/);
+  if (!m2) return null;
+  const cn = { "零": 0, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9 };
+  const str = m2[1];
+  if (str === "十") return 10;
+  if (str.includes("十")) {
+    const [a, b] = str.split("十");
+    return (a ? cn[a] : 1) * 10 + (b ? cn[b] : 0);
+  }
+  return cn[str] ?? null;
+}
+function dueDateOf(p, stageName) {
+  if (!p || !p.startDate) return "";
+  const n = cnDayNum(stageName);
+  if (!n) return "";
+  const dt = new Date(p.startDate + "T00:00:00");
+  if (isNaN(dt.getTime())) return "";
+  dt.setDate(dt.getDate() + n - 1);
+  const pad = x => String(x).padStart(2, "0");
+  return dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate());
+}
+
 function setRange(r) {
   state.range = r;
   if (r === "区间") {
@@ -358,7 +389,7 @@ function renderCat() {
       });
       if (hasT && tT) sRate = tD / tT * 100;
     }
-    return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td>${s.numberOfPersonsDueToComplete}</td><td>${s.uninitiatedNumber}</td><td>${s.numberOfPeopleInProgress}</td><td>${s.numberOfPeopleCompleted}</td><td>${barHtml(sRate)}</td></tr>`;
+    return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td style="white-space:nowrap;color:${dueDateOf(p, key) ? "var(--t1)" : "var(--t2)"}">${dueDateOf(p, key) || "—"}</td><td>${s.numberOfPersonsDueToComplete}</td><td>${s.uninitiatedNumber}</td><td>${s.numberOfPeopleInProgress}</td><td>${s.numberOfPeopleCompleted}</td><td>${barHtml(sRate)}</td></tr>`;
   }).join("");
 
   // 二级
@@ -383,7 +414,7 @@ function renderCat() {
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}
     </div>
     ${cards}
-    ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况</div><table><tr><th>阶段</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
+    ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况</div><table><tr><th>阶段</th><th>应完成日期</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
     <div class="sec"${state.sub === "全部" ? ' style="margin-left:calc(50% - 50vw + 24px);margin-right:calc(50% - 50vw + 24px)"' : ""}>
       <h3>二级汇总</h3>
       <div class="subtabs">
@@ -615,7 +646,8 @@ function renderStageModal() {
   const stageName = state.stageKey;
   const plans = plansInRange(state.cat);
   const p = plans[state.planIdx];
-  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + stageName + " · 学习明细" + (p.startDate ? ` 【任务发布时间：${p.startDate}】` : "");
+  const due = dueDateOf(p, stageName);
+  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + stageName + " · 学习明细" + (p.startDate ? ` 【任务发布时间：${p.startDate}】` : "") + (due ? ` 【应完成日期：${due}】` : "");
   let emps = (p.emps || []).filter(e => statusOf(e) != null);
   const allGroups = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
   const gset = state.dGroups, rset = state.dRegions;
