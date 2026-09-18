@@ -1328,12 +1328,16 @@ function directIndex() {
     });
     pls.sort((a, b) => (b.plan.startDate || "").localeCompare(a.plan.startDate || ""));
     const pDone = pls.reduce((a, x) => a + x.det.done, 0), pTotal = pls.reduce((a, x) => a + x.det.total, 0);
+    // 地图任务级统计（汇总进度口径：地图已完成任务/地图任务总数）
+    let mDone = 0, mTotal = 0;
+    maps.forEach(m => (m.stages || []).forEach(sg => (sg.tasks || []).forEach(tk => { mTotal++; if (String(tk.status) === "3") mDone++; })));
+    const sRate = (pTotal + mTotal) ? (pDone + mDone) / (pTotal + mTotal) * 100 : null;
     const st = rec.store || "无门店";
     prof[eid] = {
       name: rec.name || ("#" + eid), store: st, position: rec.position || "", role: rec.role || "",
       empStatus: empStatusMap[eid] || "zc",
       plans: pls, pDone, pTotal, pRate: pTotal ? pDone / pTotal * 100 : null,
-      maps, mAvg,
+      maps, mAvg, mDone, mTotal, sRate,
     };
     (byStore[st] = byStore[st] || []).push(eid);
   });
@@ -1351,27 +1355,30 @@ function renderDirect() {
     return;
   }
   // 汇总
-  let tD = 0, tT = 0, mSum = 0, mN = 0;
+  let tD = 0, tT = 0, mSum = 0, mN = 0, sD = 0, sT = 0;
   idx.emps.forEach(eid => {
     const P = idx.prof[eid];
     tD += P.pDone; tT += P.pTotal;
+    sD += P.pDone + P.mDone; sT += P.pTotal + P.mTotal;
     if (P.mAvg != null) { mSum += P.mAvg * P.maps.length; mN += P.maps.length; }
   });
-  const rate = tT ? tD / tT * 100 : 0, mAvg = mN ? mSum / mN : 0;
+  const rate = tT ? tD / tT * 100 : 0, mAvg = mN ? mSum / mN : 0, sRateAll = sT ? sD / sT * 100 : 0;
   const storeCards = idx.stores.map(st => {
     const eids = idx.byStore[st];
-    let d = 0, t = 0, ms = 0, mn = 0;
+    let d = 0, t = 0, ms = 0, mn = 0, sd = 0, st2 = 0;
     eids.forEach(eid => {
       const P = idx.prof[eid];
       d += P.pDone; t += P.pTotal;
+      sd += P.pDone + P.mDone; st2 += P.pTotal + P.mTotal;
       if (P.mAvg != null) { ms += P.mAvg * P.maps.length; mn += P.maps.length; }
     });
-    const r = t ? d / t * 100 : 0, ma = mn ? ms / mn : 0;
+    const r = t ? d / t * 100 : 0, ma = mn ? ms / mn : 0, sr = st2 ? sd / st2 * 100 : 0;
     return `<div class="card" style="cursor:pointer" onclick="openDirectStore('${esc(st).replace(/'/g, "\\'")}')">
       <div class="k">${esc(st)}</div>
       <div class="v">${eids.length}<small> 人</small></div>
       <div style="font-size:12px;color:var(--t2);margin-top:6px">任务完成率 ${barHtml(r)}</div>
       <div style="font-size:12px;color:var(--t2)">地图进度 ${barHtml(ma)}</div>
+      <div style="font-size:12px;color:var(--t2)">汇总进度 ${barHtml(sr)}</div>
     </div>`;
   }).join("");
   el.innerHTML = `
@@ -1385,6 +1392,7 @@ function renderDirect() {
         <div class="card"><div class="k">直营伙伴</div><div class="v">${idx.emps.length}<small> 人</small></div></div>
         <div class="card"><div class="k">任务完成率</div><div class="v">${rate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${tD} / ${tT} 项</div></div>
         <div class="card"><div class="k">地图平均进度</div><div class="v">${mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">共 ${mN} 张地图在学</div></div>
+        <div class="card"><div class="k">汇总进度</div><div class="v">${sRateAll.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${sD} / ${sT} 项（任务+地图）</div></div>
       </div>
       <div class="cards" style="margin-top:10px">${storeCards}</div>
     </div>`;
@@ -1420,9 +1428,10 @@ function renderDirectStoreModal() {
       <td><b>${esc(P.name)}</b></td><td>${esc(P.position || "—")}</td>
       <td>${P.pRate == null ? "—" : barHtml(P.pRate)} <span style="color:var(--t2);font-size:12px">${P.pDone}/${P.pTotal}</span></td>
       <td>${P.mAvg == null ? "—" : barHtml(P.mAvg)} <span style="color:var(--t2);font-size:12px">${P.maps.length} 张</span></td>
+      <td>${P.sRate == null ? "—" : barHtml(P.sRate)} <span style="color:var(--t2);font-size:12px">${P.pDone + P.mDone}/${P.pTotal + P.mTotal}</span></td>
       <td>${st}</td>
       <td><span style="color:#186BEB">明细 ›</span></td></tr>`;
-  }).join("") || `<tr><td colspan="6" class="empty">无符合筛选条件的伙伴</td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="empty">无符合筛选条件的伙伴</td></tr>`;
   const sel = (opts, cur, fn) => `<select onchange="${fn}(this.value)" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
     ${opts.map(o => `<option value="${esc(o)}" ${cur === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
   document.getElementById("mBody").innerHTML = `
@@ -1432,15 +1441,16 @@ function renderDirectStoreModal() {
       <span style="font-size:12px;color:var(--t2)">共 ${list.length} 人 · 点击行看学习档案</span>
     </div>
     <table>
-      <tr><th>姓名</th><th>岗位</th><th>任务完成率（已完成/应完成）</th><th>地图平均进度</th><th>状态</th><th></th></tr>
+      <tr><th>姓名</th><th>岗位</th><th>任务完成率（已完成/应完成）</th><th>地图平均进度</th><th>汇总进度（任务+地图）</th><th>状态</th><th></th></tr>
       ${rows}
     </table>`;
 }
 /* 伙伴档案弹窗：二级导航分类展示（汇总 / 学习任务 / 学习地图） */
 function dSetForm(v) { state.dForm = v; renderDirectEmpModal(); }
 function dSetEmpTab(v) { state.dEmpTab = v; renderDirectEmpModal(); }
+function dSetCat(v) { state.dCat = v; renderDirectEmpModal(); }
 function openDirectEmp(eid) {
-  state.dEmp = String(eid); state.dForm = "全部"; state.dEmpTab = "sum";
+  state.dEmp = String(eid); state.dForm = "全部"; state.dEmpTab = "sum"; state.dCat = "全部";
   window.__directBack = "emp";
   document.getElementById("mTitle").textContent = (directIndex().prof[String(eid)] || {}).name + " · 学习档案";
   renderDirectEmpModal();
@@ -1455,9 +1465,10 @@ function renderDirectEmpModal() {
   const idx = directIndex();
   const P = idx.prof[state.dEmp];
   if (!P) return;
-  // ① 汇总：分分类
+  // ① 汇总：分分类（空壳计划 total=0 不计，避免 "—" 卡）
   const byCat = {};
   P.plans.forEach(({ plan, det }) => {
+    if (!det.total) return;
     const c = plan.category || "其他";
     byCat[c] = byCat[c] || { d: 0, t: 0 };
     byCat[c].d += det.done; byCat[c].t += det.total;
@@ -1469,7 +1480,7 @@ function renderDirectEmpModal() {
   // ② 学习任务：按计划分组（形态四列）
   const formBar = `<div class="filters">${["全部", ...D_FORMS].map(f =>
     `<button class="${(state.dForm || "全部") === f ? "active" : ""}" onclick="dSetForm('${f}')">${f}${f === "全部" ? "" : "（含未完成）"}</button>`).join("")}</div>`;
-  const planBlocks = P.plans.map(({ plan, det }) => {
+  const planCard = ({ plan, det }) => {
     const rows = [];
     (det.stages || []).forEach(st => {
       (st.t || []).filter(dTaskPass).forEach(t => {
@@ -1486,15 +1497,38 @@ function renderDirectEmpModal() {
         </tr>`);
       });
     });
-    if (!rows.length) return "";
+    if (!rows.length) return null;
     const head = `<tr><th>阶段</th><th>任务</th>${D_FORMS.map(f => `<th style="text-align:center">${f}</th>`).join("")}<th>类型</th><th>状态</th><th>分数</th><th>完成时间</th></tr>`;
     const openAttr = det.done < det.total ? " open" : "";
     return `<details${openAttr} style="margin-bottom:8px">
-      <summary style="cursor:pointer;font-weight:600;padding:6px 0">${esc(plan.planName)} <span style="color:var(--t2);font-weight:400;font-size:12px">（${plan.category || ""} · ${plan.startDate || "—"}）</span>
+      <summary style="cursor:pointer;font-weight:600;padding:6px 0">${esc(plan.planName)} <span style="color:var(--t2);font-weight:400;font-size:12px">（${plan.startDate || "—"}）</span>
         <span style="float:right;font-size:12px;color:var(--t2)">${det.done}/${det.total} 项 ${barHtml(det.total ? det.done / det.total * 100 : 0)}</span></summary>
       <div style="overflow:auto"><table>${head}${rows.join("")}</table></div>
     </details>`;
-  }).join("") || `<div class="empty">该伙伴暂无培训计划任务记录</div>`;
+  };
+  // 分类子导航：课程按看板分类划分（9/19 用户拍板：学习任务内部再分类）
+  // 计数口径=有效计划（有任务明细行的），与渲染严格一致（空壳计划不计数不显示）
+  const rendered = P.plans.map(info => ({ cat: info.plan.category || "其他", html: planCard(info) }));
+  const validOf = c => rendered.filter(r => r.cat === c && r.html);
+  const allValid = rendered.filter(r => r.html);
+  const empCats = [...new Set(allValid.map(r => r.cat))];
+  const catsOrdered = [...(DATA.categories || []).filter(c => empCats.includes(c)), ...empCats.filter(c => !(DATA.categories || []).includes(c))];
+  const catJs = c => esc(c).replace(/'/g, "\\'");
+  const curCat = state.dCat || "全部";
+  const catBar = `<div class="filters" style="margin-bottom:8px">${["全部", ...catsOrdered].map(c =>
+    `<button class="${curCat === c ? "active" : ""}" onclick="dSetCat('${catJs(c)}')">${esc(c)}（${c === "全部" ? allValid.length : validOf(c).length}）</button>`).join("")}</div>`;
+  let planBlocks;
+  if (curCat === "全部") {
+    planBlocks = catsOrdered.map(c => {
+      const cards = validOf(c).map(r => r.html).join("");
+      if (!cards) return "";
+      return `<div style="margin-bottom:14px">
+        <div style="font-weight:700;font-size:13px;margin:2px 0 8px;padding:2px 0 2px 8px;border-left:3px solid var(--blue)">${esc(c)} <span style="color:var(--t2);font-weight:400;font-size:12px">· ${validOf(c).length} 个计划</span></div>
+        ${cards}</div>`;
+    }).join("") || `<div class="empty">该伙伴暂无培训计划任务记录</div>`;
+  } else {
+    planBlocks = validOf(curCat).map(r => r.html).join("") || `<div class="empty">该分类下暂无培训计划</div>`;
+  }
   // ③ 学习地图
   const mapBlocks = P.maps.map(m => {
     const prog = parseFloat(m.progress) || 0;
@@ -1527,7 +1561,7 @@ function renderDirectEmpModal() {
   // ---- 二级导航：汇总 / 学习任务 / 学习地图 分类展示 ----
   const tabDefs = [
     ["sum", "汇总", ""],
-    ["task", "学习任务", P.plans.length ? `${P.plans.length} 个计划` : ""],
+    ["task", "学习任务", allValid.length ? `${allValid.length} 个计划` : ""],
     ["map", "学习地图", P.maps.length ? `${P.maps.length} 张` : ""],
   ];
   const tabBar = `<div style="display:flex;gap:6px;background:var(--card);border:1px solid var(--line);padding:6px;border-radius:10px;margin-bottom:12px;position:sticky;top:-17px;z-index:5">
@@ -1541,10 +1575,12 @@ function renderDirectEmpModal() {
       <div class="card" style="min-width:150px"><div class="k">全部任务</div><div class="v" style="font-size:20px">${P.pRate == null ? "—" : P.pRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.pDone}/${P.pTotal} 项</div></div>
       ${catChips}
       <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px">${P.mAvg == null ? "—" : P.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.maps.length} 张（完成 ${mDone}）</div></div>
+      <div class="card" style="min-width:150px"><div class="k">汇总进度</div><div class="v" style="font-size:20px">${P.sRate == null ? "—" : P.sRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${P.pDone + P.mDone}/${P.pTotal + P.mTotal} 项（任务+地图）</div></div>
     </div>
     <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：任务口径 = 已完成/应完成项目（免修剔除）· 学习地图为平台完成进度 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
   const taskPanel = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">线上线下 / 各组派发的培训计划 · 点击计划名展开任务明细</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">线上线下 / 各组派发的培训计划 · 按看板分类划分 · 点击计划名展开任务明细</div>
+    ${catBar}
     ${formBar}
     ${planBlocks}`;
   const mapPanel = `
