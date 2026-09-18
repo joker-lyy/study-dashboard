@@ -16,7 +16,7 @@ const TYPE_NAME = { 3: "必修课", 4: "考试", 5: "作业", 7: "表单", 8: "�
 const STATUS_MAP = { 0: ["未开始", "b-gray"], 1: ["进行中", "b-orange"], 2: ["已完成", "b-green"] };
 const CORE_CATS = ["新加盟商培训", "线上线下培训", "员工培训/晋升"];
 
-// 周期判断：第N天阶段日期 = 计划开始日 + (N-1)；未到周期的阶段不展示（避免满屏未来"未签到/未考"）
+// 从阶段名解析「第N天」（兜底用：stageStats 缺失时按名字推算日期）
 function cnDayNum(s) {
   const m = /第([0-9０-９]+)天/.exec(s || "");
   if (m) return parseInt(m[1].replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)), 10);
@@ -32,23 +32,16 @@ function cnDayNum(s) {
   if (i < cn.length - 1) n += D[cn[i + 1]] || 0;
   return n;
 }
-function stageInCycle(p, sn) {
-  const day = cnDayNum(sn);
-  if (day == null || !p || !p.startDate) return true;
-  const sd = new Date(p.startDate + "T00:00:00");
-  if (isNaN(sd)) return true;
-  const d = new Date(sd); d.setDate(d.getDate() + (day - 1));
+// 周期判断（2026-09-19 统一口径）：与 dueDateOf 同源——一个阶段=一天，
+// 应完成日期 ≤ 今天才算已到周期；未到周期的阶段不展示（避免满屏未来"未签到/未考"）。
+// ⚠️ 旧版按阶段名「第N天」推算，导致明细表列头日期与阶段完成情况/弹窗（dueDateOf）不一致：
+// 182期第四天实际 9-18 完成，明细表却把 9-18 列挂成第五天（用户报障 9-19）。
+function isStageDue(p, sn) {
+  const due = dueDateOf(p, sn);
+  if (!due) return true; // 无法推算（无 stageStats/startDate）→ 一律展示
+  const d = new Date(due + "T00:00:00");
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return d <= today;
-}
-// 阶段对应日期（开始日 + 第N天-1），格式 2026-9-1（不补零）；无法解析返回空
-function stageDateStr(p, sn) {
-  const day = cnDayNum(sn);
-  if (day == null || !p || !p.startDate) return "";
-  const sd = new Date(p.startDate + "T00:00:00");
-  if (isNaN(sd)) return "";
-  const d = new Date(sd); d.setDate(d.getDate() + (day - 1));
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
 function pct(s) {
@@ -308,10 +301,16 @@ function dueDateOf(p, stageName) {
   if (!p || !p.startDate) return "";
   const list = p.stageStats || [];
   const idx = list.findIndex(x => (x.phaseName || "") === (stageName || ""));
-  if (idx < 0) return "";
   const dt = new Date(p.startDate + "T00:00:00");
   if (isNaN(dt.getTime())) return "";
-  dt.setDate(dt.getDate() + idx);
+  if (idx >= 0) {
+    dt.setDate(dt.getDate() + idx);
+  } else {
+    // stageStats 缺失/阶段名对不上 → 退回按阶段名「第N天」推算（旧口径兜底）
+    const day = cnDayNum(stageName);
+    if (day == null) return "";
+    dt.setDate(dt.getDate() + (day - 1));
+  }
   const pad = x => String(x).padStart(2, "0");
   return dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate());
 }
@@ -456,7 +455,7 @@ function renderCat() {
   // 阶段统计（行可点 -> 阶段学员明细）
   // ⚠️ 平台的 stageStatistics 与真实任务数据严重不符（182期第四天平台报「25人已完成/100%」，
   // 实际全员拼盘截图还是「待阅卷」）→ 有员工明细时一律按真实任务口径重算。
-  const stageRows = (p.stageStats || []).filter(s => stageInCycle(p, s.phaseName)).map((s, i) => {
+  const stageRows = (p.stageStats || []).filter(s => isStageDue(p, s.phaseName)).map((s, i) => {
     const key = s.phaseName;
     let todo = 0, doing = 0, doneN = 0, rT = 0, rD = 0, nDet = 0;
     (p.emps || []).forEach(e => {
@@ -557,7 +556,7 @@ function aggDetailTable(p, emps) {
     Object.values(p.empDetails || {}).forEach(det => (det.stages || []).forEach(s => { if (s.n && !stageNames.includes(s.n)) stageNames.push(s.n); }));
   })();
   // 未到周期的阶段（未来天）不展示
-  for (let i = stageNames.length - 1; i >= 0; i--) if (!stageInCycle(p, stageNames[i])) stageNames.splice(i, 1);
+  for (let i = stageNames.length - 1; i >= 0; i--) if (!isStageDue(p, stageNames[i])) stageNames.splice(i, 1);
   const leaveOf = (sn, e) => {
     const lv = p.leaves && p.leaves[sn];
     return !!(lv && (lv.includes(String(e.employeeId)) || lv.includes(e.empName)));
@@ -601,7 +600,7 @@ function aggDetailTable(p, emps) {
   }).join("");
   return !hasDet
     ? `<div style="font-size:12px;color:#b45309;background:#fff7e6;border:1px solid #ffe3a3;border-radius:8px;padding:8px 12px;margin-bottom:8px">⚠️ 该计划为直播/特殊类型，慧运营平台不提供任务明细接口（明细接口对该计划返回失败），无法统计每人的必修课/考试/实操/总进度，仅展示平台返回的完成状态。</div>${rows ? `<table><tr><th>序号</th><th>姓名</th><th>门店</th><th>完成状态</th></tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`}`
-    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>出勤</th><th>总进度</th>${stageNames.map(sn => { const ds = stageDateStr(p, sn); const short = esc(sn).replace(/新加盟商培训/g, ""); return `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${short}${ds ? `<div style="font-size:11px;font-weight:400;color:var(--t2)">${ds}</div>` : ""}</th>`; }).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
+    : (rows ? `<table><tr><th>姓名</th><th>门店</th><th>出勤</th><th>总进度</th>${stageNames.map(sn => { const ds = dueDateOf(p, sn); const short = esc(sn).replace(/新加盟商培训/g, ""); return `<th style="text-align:center;border-left:1px solid var(--line);white-space:normal;word-break:break-all;min-width:92px">${short}${ds ? `<div style="font-size:11px;font-weight:400;color:var(--t2)">${ds}</div>` : ""}</th>`; }).join("")}</tr>${rows}</table>` : `<div class="empty">无符合筛选条件的学员</div>`);
 }
 
 // 线上线下培训的明细版式：姓名/门店/区域/实操/考试分数/阶段进度/完成任务明细（抓取同新加盟商培训）
@@ -611,7 +610,7 @@ function flatDetailTable(p, emps) {
   // 出勤：整个计划的出勤情况 = 实际出勤(已签到的天数) / 应出勤(周期内已开始的天数，未来天不计)
   const stageNames = [];
   (p.emps || []).forEach(e0 => { const d0 = p.empDetails && p.empDetails[String(e0.employeeId)]; (d0 && d0.stages || []).forEach(s => { if (s.n && !stageNames.includes(s.n)) stageNames.push(s.n); }); });
-  for (let i = stageNames.length - 1; i >= 0; i--) if (!stageInCycle(p, stageNames[i])) stageNames.splice(i, 1);
+  for (let i = stageNames.length - 1; i >= 0; i--) if (!isStageDue(p, stageNames[i])) stageNames.splice(i, 1);
   const dueDays = stageNames.length;
   const rows = emps.map(e => {
     const ts = planTasks(p, e);
