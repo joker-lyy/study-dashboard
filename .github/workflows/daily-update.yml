@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     # 本地抓一轮约 7 分钟；云端从海外访问国内接口，实测 19~35 分钟且波动较大，给足余量。
     timeout-minutes: 120
+    env:
+      # 云端延迟大，把并发调高以缩短总时长（本机仍用脚本默认 8/3）
+      STUDY_WORKERS: "16"
+      STUDY_MAP_WORKERS: "6"
 
     steps:
       - name: 检出仓库

@@ -21,6 +21,16 @@ HOST = "https://zhyyapp.ruipos.com"
 SECRET = "hyy&&123456"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# 并发数：本机默认 8；云端（海外访问国内接口，延迟大）用环境变量 STUDY_WORKERS 调高
+try:
+    WORKERS = max(1, int(os.environ.get("STUDY_WORKERS", "8")))
+except ValueError:
+    WORKERS = 8
+try:
+    MAP_WORKERS = max(1, int(os.environ.get("STUDY_MAP_WORKERS", "3")))
+except ValueError:
+    MAP_WORKERS = 3
+
 # 一级菜单归类：categoryName 包含关键词即归入
 CATEGORY_RULES = [
     ("新加盟商培训", ["新加盟商"]),
@@ -213,7 +223,7 @@ def fetch_plan_detail(tok, plan):
 
     print(f"  拉取员工明细 x{len(emps)} ...")
     results = {}
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         futs = {ex.submit(emp_detail, e): e["employeeId"] for e in emps}
         for f in as_completed(futs):
             eid = futs[f]
@@ -258,7 +268,7 @@ def fetch_maps(tok):
         print(f"  {mp['mapName']}: {len(emps)} 人")
         return mp
 
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=MAP_WORKERS) as ex:
         maps = list(ex.map(fetch_map_emps, maps))
     return maps
 
