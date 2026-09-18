@@ -93,7 +93,7 @@ tr.clickable:hover td:first-child{text-decoration:underline}
   <span class="gen" id="genTime"></span>
   <button id="shareViewBtn" onclick="openShareOverlay()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔗 分享本视图</button>
   <button onclick="sharePng()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🖼 分享图片</button>
-  <button id="updateBtn" onclick="manualUpdate()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔄 更新数据</button>
+  <button id="updateBtn" onclick="manualUpdate()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔄 更新【学习看板】数据</button>
   <div class="rangebar" id="rangeBar">
     <button data-r="全部" onclick="setRange('全部')">全部</button>
     <button data-r="上月" onclick="setRange('上月')">上月</button>
@@ -122,7 +122,7 @@ const UPD_SVC = "http://localhost:8767";
 let updTimer = null;
 function updBtn(txt, dis) { const b = document.getElementById("updateBtn"); if (b) { b.textContent = txt; b.disabled = !!dis; b.style.opacity = dis ? ".6" : "1"; } }
 function updFail(msg) {
-  clearTimeout(updTimer); updBtn("🔄 更新数据", false);
+  clearTimeout(updTimer); updBtn("🔄 更新【学习看板】数据", false);
   alert(msg);
 }
 function wakeSvc(){ try{ return fetch("http://localhost:8766/wake?board=study", {cache:"no-store"}).catch(() => {}); }catch(e){ return Promise.resolve(); } }
@@ -150,7 +150,7 @@ function pollStatus() {
     } else if (j.lastOk === false) {
       updFail("更新失败：" + (j.lastMsg || "详见更新服务日志"));
     } else {
-      updBtn("🔄 更新数据", false);
+      updBtn("🔄 更新【学习看板】数据", false);
     }
   }).catch(() => updFail("更新服务断开了。它会在空闲时自动退出，双击一次「启动看板.vbs」可立即恢复（约 3 秒）"));
 }

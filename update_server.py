@@ -14,9 +14,16 @@ import collections
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+# 被 pythonw（无控制台）启动时 stdout 为 None，print 会抛异常 → 兜底到空设备
+if sys.stdout is None or sys.stderr is None:
+    _devnull = open(os.devnull, "w", encoding="utf-8")
+    sys.stdout = sys.stdout or _devnull
+    sys.stderr = sys.stderr or _devnull
 
 PORT = 8767
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -61,14 +68,14 @@ def run_step(args):
 def update_job():
     global state
     try:
-        log("===== 开始更新 =====")
+        log("===== 【学习看板】开始更新 =====")
         rc1, out1 = run_step([PY, "fetch_study.py"])
         ok1 = rc1 == 0 and "完成: 成功" in out1 and "成功0 失败" not in out1
         if not ok1:
-            state.update(running=False, lastOk=False, lastMsg="抓数失败，不推送")
+            state.update(running=False, lastOk=False, lastMsg="【学习看板】抓数失败，不推送")
             log("!! 抓数失败，不推送")
             return
-        log("抓数完成，开始推送...")
+        log("【学习看板】抓数完成，开始推送...")
         rc2, out2 = run_step([PY, "_push_inc.py", "页面手动更新"])
         ok2 = rc2 == 0 and ("main 更新 OK" in out2 or "OK ->" in out2)
         if ok2:
@@ -79,7 +86,7 @@ def update_job():
             state.update(running=False, lastOk=True, lastMsg="更新完成 %s" % commit)
             log("===== 更新完成 commit=%s =====" % commit)
         else:
-            state.update(running=False, lastOk=False, lastMsg="推送失败")
+            state.update(running=False, lastOk=False, lastMsg="【学习看板】推送失败")
             log("!! 推送失败")
     except Exception as e:
         state.update(running=False, lastOk=False, lastMsg="异常: %s" % e)
@@ -116,7 +123,9 @@ class H(SimpleHTTPRequestHandler):
         p = self.path.split("?")[0]
         if p in ("/ping", "/api/ping"):
             touch()
-            return self._json({"ok": True, **state, "log": list(log_tail)[-30:]})
+            return self._json({"ok": True, "idleExit": IDLE_EXIT,
+                               "sinceHit": round(time.time() - _last_hit, 1),
+                               **state, "log": list(log_tail)[-30:]})
         if p == "/status":
             return self._json({**state, "log": list(log_tail)[-60:]})
         if p == "/api/cat_overrides":
@@ -132,12 +141,12 @@ class H(SimpleHTTPRequestHandler):
         if self.path.startswith("/update"):
             with lock:
                 if state["running"]:
-                    return self._json({"ok": False, "msg": "已有更新在进行中"}, 409)
+                    return self._json({"ok": False, "msg": "【学习看板】已有更新在进行中"}, 409)
                 state.update(running=True, startedAt=time.strftime("%H:%M:%S"),
-                             lastMsg="更新中...", lastOk=None)
+                             lastMsg="【学习看板】更新中...", lastOk=None)
                 log_tail.clear()
             threading.Thread(target=update_job, daemon=True).start()
-            return self._json({"ok": True, "msg": "更新已开始，约7分钟"})
+            return self._json({"ok": True, "msg": "【学习看板】更新已开始，约7分钟"})
         if self.path.split("?")[0] == "/api/cat_overrides":
             # 页面「移动课程分类」的落盘入口：覆盖记录写入 data/cat_overrides.json，
             # 随下次更新推送进仓库，线上也能恢复（不再只存浏览器 localStorage）
