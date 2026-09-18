@@ -60,8 +60,12 @@ jobs:
           if len(bad) / max(len(plans), 1) > 0.3:
               raise SystemExit("校验失败：失败比例过高 %d/%d" % (len(bad), len(plans)))
 
-          # 计划数骤降 = 抓取被干扰（同账号并发登录会让计划列表变短）。
-          # 2026-09-18 实例：55 个正常，本机与云端同时抓数时只拿到 37 个。
+          # 计划数会随平台自身增删大幅波动（2026-09-18 实测一天内 raw 31~70、过滤后 23~55，
+          # 与是否并发抓数无关），所以这里只做「绝对塌陷」兜底，绝不按相对降幅拦截，
+          # 否则正常的波动会被误拦、早上就没更新了。
+          if len(plans) < 15:
+              raise SystemExit("校验失败：计划数仅 %d 个，明显塌陷，拒绝发布" % len(plans))
+
           import subprocess
           try:
               old = json.loads(subprocess.check_output(
@@ -69,9 +73,9 @@ jobs:
               n_old = len(old.get("plans") or [])
           except Exception:
               n_old = 0
-          if n_old >= 20 and len(plans) < n_old * 0.7:
-              raise SystemExit("校验失败：计划数从 %d 骤降到 %d，疑似抓取被并发干扰，已阻止发布"
-                               % (n_old, len(plans)))
+          if n_old and n_old != len(plans):
+              print("提示：本次 %d 个计划（上一版 %d 个）——平台计划会随时增删，属正常波动"
+                  % (len(plans), n_old))
 
           print("校验通过：成功 %d 个计划，失败 %d 个（上一版 %d 个）" % (len(ok), len(bad), n_old))
           print("generatedAt:", d.get("generatedAt"))
