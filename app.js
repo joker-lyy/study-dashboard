@@ -1374,6 +1374,34 @@ function dCalc(P) {
   return { pls, pDone, pTotal, pRate, maps, mAvg, mDone, mTotal, sRate };
 }
 function dSetRange(v) { state.dRange = v; renderDirect(); }
+// 门店/直营组任务完成率口径（9/19 用户拍板）：
+// 完成率 = 有派发伙伴的已完成项目总和 ÷ 应完成项目总和（分母只算被派发的人，未派发伙伴不计入）
+// 有无派发判定 = 计划 empDetails 里是否有该伙伴明细；无人被派发 → 「无派发任务」
+// 同时返回覆盖人数（covered/total 人），展示覆盖面避免「1 人完成 = 100%」误导
+function dTaskStats(eids) {
+  const set = new Set(eids.map(String));
+  const coveredSet = new Set();
+  let done = 0, den = 0, hasTask = false;
+  (DATA.plans || []).forEach(p => {
+    if (PLAN_EXCLUDE.some(k => (p.planName || "").includes(k))) return;
+    if (isSurvey(p)) return;
+    if (effCat(p) === "其他") return;
+    if (!dInRange(p.startDate)) return;
+    const ed = p.empDetails || {};
+    const hit = [];
+    set.forEach(eid => {
+      const det = ed[eid] || ed[String(eid)];
+      if (det) { hit.push(det); coveredSet.add(eid); }
+    });
+    if (!hit.length) return;
+    hasTask = true;
+    done += hit.reduce((a, t) => a + (t.done || 0), 0);
+    den += hit.reduce((a, t) => a + (t.total || 0), 0);
+  });
+  return { done, den, covered: coveredSet.size, total: set.size, hasTask, rate: den ? done / den * 100 : null };
+}
+// 无派发任务标签（伙伴行/卡片通用）
+const dNoAssign = () => `<span class="badge b-gray">无派发任务</span>`;
 // 直营员工索引（构建一次）：{emps:[eid], byStore:{店:[eid]}, prof:{eid:{...}}, plans:{eid:[{plan,det}]}, mapsAv:{eid:{avg,n,done}}}
 function directIndex() {
   if (window.__directIdx) return window.__directIdx;
@@ -1431,28 +1459,31 @@ function renderDirect() {
     return;
   }
   // 汇总（按时段筛选：全部/本月数据/上月数据）
-  let tD = 0, tT = 0, mSum = 0, mN = 0, sD = 0, sT = 0;
+  // 任务完成率=新口径（dTaskStats：分母含未派发伙伴）；地图/汇总部分沿用逐员累计
+  const TS = dTaskStats(idx.emps);
+  const tD = TS.done, tT = TS.den;
+  let mSum = 0, mN = 0, mDoneAll = 0, mTotAll = 0;
   idx.emps.forEach(eid => {
     const S = dCalc(idx.prof[eid]);
-    tD += S.pDone; tT += S.pTotal;
-    sD += S.pDone + S.mDone; sT += S.pTotal + S.mTotal;
+    mDoneAll += S.mDone; mTotAll += S.mTotal;
     if (S.mAvg != null) { mSum += S.mAvg * S.maps.length; mN += S.maps.length; }
   });
-  const rate = tT ? tD / tT * 100 : 0, mAvg = mN ? mSum / mN : 0, sRateAll = sT ? sD / sT * 100 : 0;
+  const rate = TS.rate, mAvg = mN ? mSum / mN : 0, sD = tD + mDoneAll, sT = tT + mTotAll, sRateAll = sT ? sD / sT * 100 : 0;
   const storeCards = idx.stores.map(st => {
     const eids = idx.byStore[st];
-    let d = 0, t = 0, ms = 0, mn = 0, sd = 0, st2 = 0;
+    let ms = 0, mn = 0, mdd = 0, mtt = 0;
     eids.forEach(eid => {
       const S = dCalc(idx.prof[eid]);
-      d += S.pDone; t += S.pTotal;
-      sd += S.pDone + S.mDone; st2 += S.pTotal + S.mTotal;
+      mdd += S.mDone; mtt += S.mTotal;
       if (S.mAvg != null) { ms += S.mAvg * S.maps.length; mn += S.maps.length; }
     });
-    const r = t ? d / t * 100 : 0, ma = mn ? ms / mn : 0, sr = st2 ? sd / st2 * 100 : 0;
+    const TSn = dTaskStats(eids);
+    const r = TSn.rate, ma = mn ? ms / mn : 0;
+    const sd2 = TSn.done + mdd, st3 = TSn.den + mtt, sr = st3 ? sd2 / st3 * 100 : 0;
     return `<div class="card" style="cursor:pointer" onclick="openDirectStore('${esc(st).replace(/'/g, "\\'")}')">
       <div class="k">${esc(st)}</div>
       <div class="v">${eids.length}<small> 人</small></div>
-      <div style="font-size:12px;color:var(--t2);margin-top:6px">任务完成率 ${dBar(r)}</div>
+      <div style="font-size:12px;color:var(--t2);margin-top:6px">任务完成率 ${TSn.hasTask ? `${dBar(r)} <span style="color:var(--t2)">覆盖 ${TSn.covered}/${eids.length}人</span>` : dNoAssign()}</div>
       <div style="font-size:12px;color:var(--t2)">地图进度 ${dBar(ma)}</div>
       <div style="font-size:12px;color:var(--t2)">汇总进度 ${dBar(sr)}</div>
     </div>`;
@@ -1461,7 +1492,7 @@ function renderDirect() {
     <div class="sec">
       <h3>直营学习明细（培训组-直营组）<button class="btn directShareBtn" style="margin-left:auto;padding:6px 14px;font-size:12px" onclick="openShareOverlay('direct')">🔗 分享本页（门店自查链接）</button></h3>
       <div style="font-size:12px;color:var(--t2);margin:-4px 0 10px">
-        口径：学习率 = 课程已完成项目 ÷ 课程应完成项目（免修任务剔除；「其他」分类不展示，主看板「其他」页签保留）· 线上线下培训课程清单与「线上线下培训」页签同源（问卷/调查类归评价管理）· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
+        口径：个人任务完成率 = 已完成 ÷ 应完成项目（免修剔除；「其他」分类不展示，主看板「其他」页签保留）· 门店/直营组任务完成率 = 被派发伙伴的已完成 ÷ 应完成项目总和（未派发伙伴不计入分母），旁标覆盖人数，无人被派发显示「无派发任务」· 线上线下培训课程清单与「线上线下培训」页签同源（问卷/调查类归评价管理）· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
       </div>
       <div class="filters" style="margin-bottom:12px">
         ${["全部", "本月数据", "上月数据"].map(r => `<button class="${(state.dRange || "全部") === r ? "active" : ""}" onclick="dSetRange('${r}')">${r}</button>`).join("")}
@@ -1472,7 +1503,9 @@ function renderDirect() {
         <div class="card" style="grid-column:span 2"><div class="k">直营伙伴</div><div class="v">${idx.emps.length}<small> 人</small></div></div>
       </div>
       <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
-        <div class="card"><div class="k">任务完成率</div><div class="v" style="color:${dRateCol(rate)}">${rate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${tD} / ${tT} 项</div></div>
+        <div class="card"><div class="k">任务完成率</div>${TS.hasTask
+          ? `<div class="v" style="color:${dRateCol(rate)}">${rate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${tD} / ${tT} 项 · 覆盖 ${TS.covered}/${TS.total} 人</div>`
+          : `<div style="font-size:13px;color:var(--t2);padding:10px 0">${dNoAssign()}</div>`}</div>
         <div class="card"><div class="k">地图平均进度</div><div class="v" style="color:${dRateCol(mAvg)}">${mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">共 ${mN} 张地图在学</div></div>
         <div class="card"><div class="k">汇总进度</div><div class="v" style="color:${dRateCol(sRateAll)}">${sRateAll.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${sD} / ${sT} 项（任务+地图）</div></div>
       </div>
@@ -1507,9 +1540,11 @@ function renderDirectStoreModal() {
     const P = idx.prof[eid];
     const S = dCalc(P);
     const st = P.empStatus === "zc" ? `<span class="badge b-green">在职</span>` : `<span class="badge b-gray">离职</span>`;
+    // 任务完成率（9/19 用户拍板）：筛选时段内无任何任务明细派发给该伙伴 → 显示「无派发任务」，不算 0%
+    const hasAssign = S.pls.some(x => x.det);
     return `<tr style="cursor:pointer" onclick="openDirectEmp('${eid}')">
       <td><b>${esc(P.name)}</b></td><td>${esc(P.position || "—")}</td>
-      <td>${S.pRate == null ? "—" : dBar(S.pRate)} <span style="color:var(--t2);font-size:12px">${S.pDone}/${S.pTotal}</span></td>
+      <td>${hasAssign ? `${dBar(S.pRate || 0)} <span style="color:var(--t2);font-size:12px">${S.pDone}/${S.pTotal}</span>` : dNoAssign()}</td>
       <td>${S.mAvg == null ? "—" : dBar(S.mAvg)} <span style="color:var(--t2);font-size:12px">${S.maps.length} 张</span></td>
       <td>${S.sRate == null ? "—" : dBar(S.sRate)} <span style="color:var(--t2);font-size:12px">${S.pDone + S.mDone}/${S.pTotal + S.mTotal}</span></td>
       <td>${st}</td>
@@ -1664,7 +1699,9 @@ function renderDirectEmpModal() {
   </div>`;
   const sumPanel = `
     <div class="cards">
-      <div class="card" style="min-width:150px"><div class="k">全部任务</div><div class="v" style="font-size:20px;color:${dRateCol(S.pRate)}">${S.pRate == null ? "—" : S.pRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.pDone}/${S.pTotal} 项</div></div>
+      <div class="card" style="min-width:150px"><div class="k">全部任务</div>${S.pls.some(x => x.det)
+        ? `<div class="v" style="font-size:20px;color:${dRateCol(S.pRate)}">${S.pRate == null ? "0.0" : S.pRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.pDone}/${S.pTotal} 项</div>`
+        : `<div style="font-size:13px;color:var(--t2);padding:8px 0">${dNoAssign()}</div>`}</div>
       ${catChips}
       <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px;color:${dRateCol(S.mAvg)}">${S.mAvg == null ? "—" : S.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.maps.length} 张（完成 ${mDone}）</div></div>
       <div class="card" style="min-width:150px"><div class="k">汇总进度</div><div class="v" style="font-size:20px;color:${dRateCol(S.sRate)}">${S.sRate == null ? "—" : S.sRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.pDone + S.mDone}/${S.pTotal + S.mTotal} 项（任务+地图）</div></div>
