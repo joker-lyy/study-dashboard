@@ -1552,7 +1552,7 @@ function renderDirectStoreModal() {
     <div class="filters">
       ${sel(["全部", ...positions], state.dPos, "directSetPos")}
       ${sel(["在职", "全部", "离职"], state.dEmpStatus2 || "在职", "directSetSt")}
-      <span style="font-size:12px;color:var(--t2)">共 ${list.length} 人 · 点击行看学习档案</span>
+      <span style="font-size:12px;color:var(--t2)">共 ${list.length} 人 · <b style="color:var(--t1)">当前时段：${esc(state.dRange || "全部")}</b>（学习地图恒为全部）· 点击行看学习档案</span>
       <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:auto" onclick="sharePng('modal')">🖼 图片</button>
     </div>
     <table>
@@ -1628,33 +1628,14 @@ function renderDirectEmpModal() {
       <div style="overflow:auto"><table>${head}${rows.join("")}</table></div>
     </details>`;
   };
-  // 清单走 P.plans 全量（directIndex 已只收线上线下培训，与页签 plansOf 同源同滤：
-  // effCat+剔问卷+剔关键词），不受直营时段筛选影响——9/19 用户拍板：学习任务清单必须与页签课程一致
-  const rendered = P.plans.map(info => ({ cat: effCat(info.plan), html: planCard(info) })).filter(r => r.html);
-  const validOf = c => rendered.filter(r => r.cat === c);
+  // 清单与汇总同口径：随直营时段筛选（9/19 用户拍板：页面选「上月数据」，点进明细必须也是上月，不能还是全部）
+  // 课程范围仍=「线上线下培训」板块全量（directIndex 已同源同滤 effCat+剔问卷+剔关键词，
+  // 范围内无明细的课程照样列占位卡）；「全部」时段下清单=页签课程全集
+  const rendered = S.pls.map(info => ({ html: planCard(info) })).filter(r => r.html);
   const allValid = rendered;
-  const empCats = [...new Set(allValid.map(r => r.cat))];
-  const catsOrdered = [...(DATA.categories || []).filter(c => empCats.includes(c)), ...empCats.filter(c => !(DATA.categories || []).includes(c))];
-  const catJs = c => esc(c).replace(/'/g, "\\'");
-  const curCat = state.dCat || "全部";
-  // 只剩线上线下培训一个分类时不再显示分类导航/分组头（冗余）
-  const singleCat = catsOrdered.length <= 1;
-  const catBar = singleCat ? "" : `<div class="filters" style="margin-bottom:8px">${["全部", ...catsOrdered].map(c =>
-    `<button class="${curCat === c ? "active" : ""}" onclick="dSetCat('${catJs(c)}')">${esc(c)}（${c === "全部" ? allValid.length : validOf(c).length}）</button>`).join("")}</div>`;
-  let planBlocks;
-  if (curCat === "全部") {
-    planBlocks = singleCat
-      ? validOf(catsOrdered[0]).map(r => r.html).join("") || `<div class="empty">该伙伴暂无培训计划任务记录</div>`
-      : catsOrdered.map(c => {
-          const cards = validOf(c).map(r => r.html).join("");
-          if (!cards) return "";
-          return `<div style="margin-bottom:14px">
-            <div style="font-weight:700;font-size:13px;margin:2px 0 8px;padding:2px 0 2px 8px;border-left:3px solid var(--blue)">${esc(c)} <span style="color:var(--t2);font-weight:400;font-size:12px">· ${validOf(c).length} 个计划</span></div>
-            ${cards}</div>`;
-        }).join("") || `<div class="empty">该伙伴暂无培训计划任务记录</div>`;
-  } else {
-    planBlocks = validOf(curCat).map(r => r.html).join("") || `<div class="empty">该分类下暂无培训计划</div>`;
-  }
+  const dRg = esc(state.dRange || "全部");
+  const planBlocks = allValid.map(r => r.html).join("")
+    || `<div class="empty">${(state.dRange || "全部") === "全部" ? "该伙伴暂无培训计划任务记录" : `该时段（${dRg}）暂无派发的线上线下培训课程`}</div>`;
   // ③ 学习地图
   const mapBlocks = S.maps.map(m => {
     const prog = parseFloat(m.progress) || 0;
@@ -1698,17 +1679,16 @@ function renderDirectEmpModal() {
   </div>`;
   const sumPanel = `
     <div class="cards">
-      <div class="card" style="min-width:150px"><div class="k">全部任务</div>${S.pls.some(x => x.det)
+      <div class="card" style="min-width:150px"><div class="k">任务完成率</div>${S.pls.some(x => x.det)
         ? `<div class="v" style="font-size:20px;color:${dRateCol(S.pRate)}">${S.pRate == null ? "0.0" : S.pRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.pDone}/${S.pTotal} 项</div>`
         : `<div style="font-size:13px;color:var(--t2);padding:8px 0">${dNoAssign()}</div>`}</div>
       ${catChips}
       <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px;color:${dRateCol(S.mAvg)}">${S.mAvg == null ? "—" : S.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.maps.length} 张（完成 ${mDone}）</div></div>
       <div class="card" style="min-width:150px"><div class="k">汇总进度</div><div class="v" style="font-size:20px;color:${dRateCol(S.sRate)}">${S.sRate == null ? "—" : S.sRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.pDone + S.mDone}/${S.pTotal + S.mTotal} 项（任务+地图）</div></div>
     </div>
-    <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：汇总数字随直营时段筛选 · 任务只统计「线上线下培训」板块课程（已完成/应完成项目，免修剔除）· 学习任务清单与「线上线下培训」页签完全同源、不受筛选影响 · 学习地图为平台完成进度 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
+    <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：汇总与学习任务清单同口径，随直营时段筛选（当前：${dRg}）· 任务只统计「线上线下培训」板块课程（已完成/应完成项目，免修剔除）· 「全部」时段下清单=该页签课程全集 · 学习地图为平台完成进度、不受筛选 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
   const taskPanel = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">只统计「线上线下培训」板块课程 · 与该页签完全同源（不受时段筛选） · 点击计划名展开任务明细</div>
-    ${catBar}
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">只统计「线上线下培训」板块课程 · 随直营时段筛选（当前：${dRg}）· 点击计划名展开任务明细</div>
     ${formBar}
     ${planBlocks}`;
   const mapPanel = `
@@ -1718,7 +1698,7 @@ function renderDirectEmpModal() {
   const panels = { sum: sumPanel, task: taskPanel, map: mapPanel };
   document.getElementById("mBody").innerHTML = `
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">${back}
-      <span style="font-size:13px;color:var(--t2)">${esc(P.store)} · ${esc(P.position || "")} ${P.role ? "· " + esc(P.role) : ""}</span>
+      <span style="font-size:13px;color:var(--t2)">${esc(P.store)} · ${esc(P.position || "")} ${P.role ? "· " + esc(P.role) : ""} · 时段：<b style="color:var(--t1)">${esc(state.dRange || "全部")}</b></span>
       <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:auto" onclick="sharePng('modal')">🖼 图片</button></div>
     ${tabBar}
     ${panels[state.dEmpTab || "sum"]}`;
