@@ -1489,9 +1489,6 @@ function renderDirect() {
   el.innerHTML = `
     <div class="sec">
       <h3>直营学习明细（培训组-直营组）<button class="btn directShareBtn" style="margin-left:auto;padding:6px 14px;font-size:12px" onclick="openShareOverlay('direct')">🔗 分享本页（门店自查链接）</button></h3>
-      <div style="font-size:12px;color:var(--t2);margin:-4px 0 10px">
-        口径：学习任务（含任务完成率）只统计「线上线下培训」板块课程，与该页签完全同源（问卷/调查类归评价管理；员工培训/晋升、其他等板块不计入）· 门店/直营组任务完成率 = 被派发伙伴的已完成 ÷ 应完成项目总和（未派发伙伴不计入分母），旁标覆盖人数，无人被派发显示「无派发任务」· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 — · 门店卡片按汇总完成率降序排列（随上方时段筛选联动）
-      </div>
       <div class="filters" style="margin-bottom:12px">
         ${["全部", "本月数据", "上月数据"].map(r => `<button class="${(state.dRange || "全部") === r ? "active" : ""}" onclick="dSetRange('${r}')">${r}</button>`).join("")}
         ${(state.dRange || "全部") !== "全部" ? `<span style="font-size:12px;color:var(--t2);align-self:center;margin-left:6px">学习任务只统计${state.dRange.startsWith("本月") ? "本月" : "上月"}发布的计划；学习地图不受筛选，始终为全部</span>` : ""}
