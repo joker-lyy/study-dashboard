@@ -27,6 +27,9 @@ jobs:
       # 云端延迟大，把并发调高以缩短总时长（本机仍用脚本默认 8/3）
       STUDY_WORKERS: "16"
       STUDY_MAP_WORKERS: "6"
+      # 2026-09-19 修复：runner 默认 UTC，fetch_study.py 的 generatedAt 曾慢 8 小时
+      #（页面「数据更新于 08:20」实为北京时间 16:20）。设成北京时区后两端口径一致。
+      TZ: Asia/Shanghai
 
     steps:
       - name: 检出仓库
