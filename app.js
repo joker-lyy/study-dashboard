@@ -1392,7 +1392,7 @@ function directIndex() {
     // 其余分类仍按报名明细驱动；「其他」分类直营板块不展示，主看板「其他」页签保留）
     const pls = [];
     (DATA.plans || []).forEach(p => {
-      if (p.fetchError) return;
+      // fetchError 不剔除：与页签 plansOf 完全同滤（页签不查 fetchError）；无明细时线上线下培训走占位卡
       if (PLAN_EXCLUDE.some(k => (p.planName || "").includes(k))) return;
       if (isSurvey(p)) return; // 问卷/调查类归「评价管理」，与各分类页签口径一致（直营不展示、不统计）
       const cat = effCat(p);
@@ -1598,8 +1598,9 @@ function renderDirectEmpModal() {
     </details>`;
   };
   // 分类子导航：课程按看板分类划分（effCat 归口覆盖生效；「其他」直营板块不展示）
-  // 计数口径=渲染口径（含「明细暂缺」占位卡，与「线上线下培训」页签课程清单一致）
-  const rendered = S.pls.map(info => ({ cat: effCat(info.plan), html: planCard(info) })).filter(r => r.html && r.cat !== "其他");
+  // 计数口径=渲染口径（含「明细暂缺」占位卡）；清单走 P.plans 全量（与页签 plansOf 同源同滤：
+  // effCat+剔问卷+剔关键词），不受直营时段筛选影响——9/19 用户拍板：学习任务清单必须与页签课程一致
+  const rendered = P.plans.map(info => ({ cat: effCat(info.plan), html: planCard(info) })).filter(r => r.html && r.cat !== "其他");
   const validOf = c => rendered.filter(r => r.cat === c);
   const allValid = rendered;
   const empCats = [...new Set(allValid.map(r => r.cat))];
@@ -1668,9 +1669,9 @@ function renderDirectEmpModal() {
       <div class="card" style="min-width:150px"><div class="k">学习地图</div><div class="v" style="font-size:20px;color:${dRateCol(S.mAvg)}">${S.mAvg == null ? "—" : S.mAvg.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.maps.length} 张（完成 ${mDone}）</div></div>
       <div class="card" style="min-width:150px"><div class="k">汇总进度</div><div class="v" style="font-size:20px;color:${dRateCol(S.sRate)}">${S.sRate == null ? "—" : S.sRate.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2)">${S.pDone + S.mDone}/${S.pTotal + S.mTotal} 项（任务+地图）</div></div>
     </div>
-    <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：任务口径 = 已完成/应完成项目（免修剔除；「其他」分类不展示）· 线上线下培训课程与「线上线下培训」页签同源 · 学习地图为平台完成进度 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
+    <div style="font-size:12px;color:var(--t2);margin-top:10px">口径：汇总数字随直营时段筛选（任务=已完成/应完成项目，免修剔除；「其他」分类不展示）· 学习任务清单恒为全部课程，与「线上线下培训」页签同源、不受筛选影响 · 学习地图为平台完成进度 · 明细请在上方导航切换「学习任务」「学习地图」查看</div>`;
   const taskPanel = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">线上线下 / 各组派发的培训计划 · 按看板分类划分 · 点击计划名展开任务明细</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">线上线下 / 各组派发的培训计划 · 按看板分类划分 · 与页签课程清单同源（不受时段筛选） · 点击计划名展开任务明细</div>
     ${catBar}
     ${formBar}
     ${planBlocks}`;
@@ -1694,9 +1695,9 @@ function render() {
     const ps = (DATA.plans || []).filter(p => p.category === c);
     return ps.some(p => (p.emps || []).length > 0 || (p.storeStats || []).length > 0);
   });
-  // 「其他」分类垫底（用户拍板：直营学习明细排在「其他」前面），其余分类保持原顺序
-  const catsSorted = [...visibleCats.filter(c => c !== "其他"), ...(visibleCats.includes("其他") ? ["其他"] : [])];
-  const tabs = [["概述", ""], ...catsSorted.map(c => [c, ""]), ["直营学习明细", ""], ["评价管理", ""], ["离职管理档案", ""]];
+  // 「直营学习明细」排在「其他」前面（用户拍板 9/19）：分类保持原顺序，「其他」挪到直营之后
+  const catsSorted = visibleCats.filter(c => c !== "其他");
+  const tabs = [["概述", ""], ...catsSorted.map(c => [c, ""]), ["直营学习明细", ""], ...(visibleCats.includes("其他") ? [["其他", ""]] : []), ["评价管理", ""], ["离职管理档案", ""]];
   document.getElementById("mainTabs").innerHTML = tabs.map(([t]) => {
     let n;
     if (t === "概述" || t === "评价管理" || t === "离职管理档案") n = "";
