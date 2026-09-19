@@ -1465,7 +1465,8 @@ function renderDirect() {
     if (S.mAvg != null) { mSum += S.mAvg * S.maps.length; mN += S.maps.length; }
   });
   const rate = TS.rate, mAvg = mN ? mSum / mN : 0, sD = tD + mDoneAll, sT = tT + mTotAll, sRateAll = sT ? sD / sT * 100 : 0;
-  const storeCards = idx.stores.map(st => {
+  // 门店排序（9/19 用户拍板）：按汇总完成率（任务+地图）降序，随当前时段筛选联动；同率时人数多的在前
+  const storeRows = idx.stores.map(st => {
     const eids = idx.byStore[st];
     let ms = 0, mn = 0, mdd = 0, mtt = 0;
     eids.forEach(eid => {
@@ -1476,19 +1477,20 @@ function renderDirect() {
     const TSn = dTaskStats(eids);
     const r = TSn.rate, ma = mn ? ms / mn : 0;
     const sd2 = TSn.done + mdd, st3 = TSn.den + mtt, sr = st3 ? sd2 / st3 * 100 : 0;
-    return `<div class="card" style="cursor:pointer" onclick="openDirectStore('${esc(st).replace(/'/g, "\\'")}')">
-      <div class="k">${esc(st)}</div>
-      <div class="v">${eids.length}<small> 人</small></div>
-      <div style="font-size:12px;color:var(--t2);margin-top:6px">任务完成率 ${TSn.hasTask ? `${dBar(r)} <span style="color:var(--t2)">覆盖 ${TSn.covered}/${eids.length}人</span>` : dNoAssign()}</div>
-      <div style="font-size:12px;color:var(--t2)">地图进度 ${dBar(ma)}</div>
-      <div style="font-size:12px;color:var(--t2)">汇总进度 ${dBar(sr)}</div>
-    </div>`;
-  }).join("");
+    return { st, eids, TSn, r, ma, sr };
+  }).sort((a, b) => (b.sr - a.sr) || (b.eids.length - a.eids.length));
+  const storeCards = storeRows.map(x => `<div class="card" style="cursor:pointer" onclick="openDirectStore('${esc(x.st).replace(/'/g, "\\'")}')">
+      <div class="k">${esc(x.st)}</div>
+      <div class="v">${x.eids.length}<small> 人</small></div>
+      <div style="font-size:12px;color:var(--t2);margin-top:6px">任务完成率 ${x.TSn.hasTask ? `${dBar(x.r)} <span style="color:var(--t2)">覆盖 ${x.TSn.covered}/${x.eids.length}人</span>` : dNoAssign()}</div>
+      <div style="font-size:12px;color:var(--t2)">地图进度 ${dBar(x.ma)}</div>
+      <div style="font-size:12px;color:var(--t2)">汇总进度 ${dBar(x.sr)}</div>
+    </div>`).join("");
   el.innerHTML = `
     <div class="sec">
       <h3>直营学习明细（培训组-直营组）<button class="btn directShareBtn" style="margin-left:auto;padding:6px 14px;font-size:12px" onclick="openShareOverlay('direct')">🔗 分享本页（门店自查链接）</button></h3>
       <div style="font-size:12px;color:var(--t2);margin:-4px 0 10px">
-        口径：学习任务（含任务完成率）只统计「线上线下培训」板块课程，与该页签完全同源（问卷/调查类归评价管理；员工培训/晋升、其他等板块不计入）· 门店/直营组任务完成率 = 被派发伙伴的已完成 ÷ 应完成项目总和（未派发伙伴不计入分母），旁标覆盖人数，无人被派发显示「无派发任务」· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 —
+        口径：学习任务（含任务完成率）只统计「线上线下培训」板块课程，与该页签完全同源（问卷/调查类归评价管理；员工培训/晋升、其他等板块不计入）· 门店/直营组任务完成率 = 被派发伙伴的已完成 ÷ 应完成项目总和（未派发伙伴不计入分母），旁标覆盖人数，无人被派发显示「无派发任务」· 学习地图为平台完成进度 · 任务形态分 视频/文件/考试/实操（上传作业），无则显示 — · 门店卡片按汇总完成率降序排列（随上方时段筛选联动）
       </div>
       <div class="filters" style="margin-bottom:12px">
         ${["全部", "本月数据", "上月数据"].map(r => `<button class="${(state.dRange || "全部") === r ? "active" : ""}" onclick="dSetRange('${r}')">${r}</button>`).join("")}
