@@ -2,6 +2,9 @@
 # 下面两个推送脚本里写有 GitHub 令牌，一旦入库会被 Push Protection 拦下并泄露
 _push_inc.py
 _push_full.py
+# 夜间快照脚本内含企微 webhook 密钥，同样只留本地
+_night_snapshot.js
+data/_night_snapshot_log.txt
 
 # 抓数运行日志 / 备份 / 缓存
 __pycache__/

@@ -31,42 +31,42 @@
   "mapName": "初级学徒转正",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 825,
+  "lastEmpCount": 56,
   "lastSeen": "2026-09-21"
  },
  "10000000052207": {
   "mapName": "学徒学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 396,
+  "lastEmpCount": 47,
   "lastSeen": "2026-09-21"
  },
  "10000000052072": {
   "mapName": "初级师傅学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 383,
+  "lastEmpCount": 43,
   "lastSeen": "2026-09-21"
  },
  "10000000051948": {
   "mapName": "中级师傅学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 345,
+  "lastEmpCount": 37,
   "lastSeen": "2026-09-21"
  },
  "10000000051852": {
   "mapName": "星级师傅学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 339,
+  "lastEmpCount": 33,
   "lastSeen": "2026-09-21"
  },
  "10000000050123": {
   "mapName": "店长学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 327,
+  "lastEmpCount": 23,
   "lastSeen": "2026-09-21"
  }
 }
