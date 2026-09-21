@@ -115,18 +115,51 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 </div>
 
 <script src="qrcode.min.js?v=14"></script>
-<script src="app.js?v=97"></script>
+<script src="app.js?v=98"></script>
 <script>
 /* 手动更新：本地更新服务(localhost:8767) 抓数+推送 */
 const UPD_SVC = "http://localhost:8767";
 let updTimer = null;
 function updBtn(txt, dis) { const b = document.getElementById("updateBtn"); if (b) { b.textContent = txt; b.disabled = !!dis; b.style.opacity = dis ? ".6" : "1"; } }
 function updFail(msg) {
-  clearTimeout(updTimer); updBtn("🔄 更新【学习看板】数据", false);
+  clearTimeout(updTimer); updBusy = false; updGuardTick();
   alert(msg);
 }
 function wakeSvc(){ try{ return fetch("http://localhost:8766/wake?board=study", {cache:"no-store"}).catch(() => {}); }catch(e){ return Promise.resolve(); } }
+/* 自动更新时段前后 30 分钟内禁止手动更新（2026-09-22 约定）
+   时段 = 本地管家 10:00/13:00/16:00/19:00/22:20 + 云端 00:05（云端 10:05~19:05 各档落在整点档 ±30 分钟内） */
+const AUTO_SLOTS = [[0,5],[10,0],[13,0],[16,0],[19,0],[22,20]];
+let updBusy = false;
+function updWindowLeft() {
+  const n = new Date(), m = n.getHours() * 60 + n.getMinutes();
+  for (const s of AUTO_SLOTS) {
+    const t = s[0] * 60 + s[1];
+    let d = m - t;
+    if (d > 720) d -= 1440; else if (d < -720) d += 1440;
+    if (Math.abs(d) <= 30) return d; // 负数=还有多久开始，正数=已开始多久
+  }
+  return null;
+}
+function updGuardTick() {
+  const b = document.getElementById("updateBtn");
+  if (!b || updBusy) return;
+  const d = updWindowLeft();
+  if (d !== null) {
+    b.textContent = d <= 0 ? "🔒 自动更新进行中，暂禁手动" : "🔒 距自动更新 " + d + " 分钟，暂禁手动";
+    b.disabled = true; b.style.opacity = ".6";
+  } else if (b.disabled) {
+    b.textContent = "🔄 更新【学习看板】数据"; b.disabled = false; b.style.opacity = "1";
+  }
+}
+setInterval(updGuardTick, 30000);
 function manualUpdate() {
+  const d = updWindowLeft();
+  if (d !== null) {
+    const tip = d <= 0 ? "自动更新正在进行/收尾" : "距自动更新开始约 " + d + " 分钟";
+    alert("⏸ 现在处于自动更新时段前后 30 分钟内（" + tip + "），手动更新暂不可用。\n自动更新时段：每天 00:05、10:00、13:00、16:00、19:00、22:20");
+    return;
+  }
+  updBusy = true;
   updBtn("⏳ 检查服务...", true);
   wakeSvc().then(() => fetch(UPD_SVC + "/ping", { method: "GET" })).then(r => r.json()).then(j => {
     if (!j.ok) return updFail("本机更新服务没能起来，请双击一次桌面/文件夹里的「启动看板.vbs」，再点更新");
@@ -156,6 +189,7 @@ function pollStatus() {
 }
 /* 打开页面时顺带探一下服务，提示可用性（不打扰） */
 window.addEventListener("load", () => {
+  updGuardTick();
   fetch(UPD_SVC + "/ping").then(r => r.json()).then(j => { if (j.ok && j.running) updBtn("⏳ 更新中 " + (j.startedAt || ""), true); }).catch(() => {});
 });
 </script>
