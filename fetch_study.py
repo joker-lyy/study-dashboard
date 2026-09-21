@@ -85,23 +85,46 @@ def _open(req, timeout=20, tries=3, what="请求"):
                 time.sleep(1.5 * i)
     raise last
 
+# ── 888 固定岗位声明 ──────────────────────────────────────────────
+# 目标岗位「培训经理@总部」（roleId=104, organizeId=1）。
+# 平台会把「手机 App 最后切换的岗位」记为账号当前岗位，网页/脚本登录继承它——
+# 手机一切岗，学习地图可见范围就跟着缩水（9-20 塌陷的根因）。
+# 每次登录显式声明目标岗位：当前服务端版本会忽略该参数，
+# 但一旦平台修复/支持，抓数即自动恢复完整可见范围，无需改代码。
+FIX_ROLE_ID = 104        # 培训经理
+FIX_ORG_ID = 1           # 总部
+FIX_ROLE_LABEL = "培训经理@总部"
+
 def login():
     nonce = "".join(random.choices(string.ascii_letters + string.digits, k=16))
     ts = int(time.time() * 1000)
     body = {"sign": _sign(nonce, ts), "nonce": nonce, "timestamp": ts,
             "phoneModel": "Mozilla/5.0", "platform": "browser", "clientVersion": "4.0.0",
             "loginType": "W", "ent": "cjss", "username": "888",
-            "password": hashlib.md5("Aa123456".encode()).hexdigest()}
+            "password": hashlib.md5("Aa123456".encode()).hexdigest(),
+            "role": FIX_ROLE_ID, "organizeId": FIX_ORG_ID}
     req = urllib.request.Request(HOST + "/auth/login?version=1", data=json.dumps(body).encode(), method="POST")
     for k, v in [("Content-Type", "application/json"), ("Accept", "*/*"),
                  ("Origin", "https://zhyy.ruipos.com"), ("Referer", "https://zhyy.ruipos.com/")]:
         req.add_header(k, v)
     j = json.loads(_open(req, timeout=30, tries=5, what="登录"))
-    tok = (j.get("data") or {}).get("token")
+    d = j.get("data") or {}
+    tok = d.get("token")
     if not tok:
         raise RuntimeError("登录未拿到 token: %s" % str(j)[:200])
-    print("login OK")
-    return tok
+    # 岗位检测：当前组织不是「总部(1)」说明手机 App 切过岗，可见范围受限
+    cur_org = d.get("currentOrganization")
+    if cur_org == FIX_ORG_ID:
+        print(f"login OK（岗位已固定 {FIX_ROLE_LABEL}）")
+        role_state = {"currentOrganization": cur_org, "fixed": True, "label": FIX_ROLE_LABEL}
+    else:
+        print("⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️")
+        print(f"⚠️ 888 当前岗位不是{FIX_ROLE_LABEL}（现在是组织ID={cur_org}）")
+        print("⚠️ 可见范围受限：晋升图/加盟商学员只能抓到可见的那部分，数据不完整！")
+        print("⚠️ 请在【手机 App：我的→切换岗位】切回「培训经理-总部」，下次抓数即恢复")
+        print("⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️")
+        role_state = {"currentOrganization": cur_org, "fixed": False, "label": FIX_ROLE_LABEL}
+    return tok, role_state
 
 def call(tok, path, body):
     req = urllib.request.Request(HOST + path, data=json.dumps(body).encode(), method="POST")
@@ -499,7 +522,7 @@ def fetch_resigned(tok):
     return lz
 
 def main():
-    tok = login()
+    tok, role_state = login()
     plans = fetch_all_plans(tok)
     n_before = len(plans)
     plans = [p for p in plans if not any(k in (p["planName"] or "") for k in PLAN_EXCLUDE)]
@@ -519,6 +542,7 @@ def main():
     maps = fetch_maps(tok)
     direct = fetch_direct_maps(tok, maps)
     data = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "roleState": role_state,
             "evaluations": ev,
             "courseSurveys": cs,
             "resigned": fetch_resigned(tok),
