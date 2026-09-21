@@ -52,25 +52,27 @@ function barHtml(v) {
   const cls = v >= 80 ? "g" : v >= 40 ? "o" : "r";
   return `<span class="bar"><i class="${cls}" style="width:${Math.min(v, 100)}%"></i></span>${v.toFixed(1)}%`;
 }
-// 上传类动作任务（fix202）：拼盘截图上传是「动作」不是考试——平台上传即自动打 80 分，
-// 该分数无意义，不进考试分数列；各任务独立展示（fix202b 用户澄清：两条上传不是同一工作，都保留）：
-// · A「上传拼盘实操考核图片」= 纯动作：未上传=未完成，已上传=已完成（不显示自动 80 分）
-// · B「上传慧运营的拼盘学习工具考核截图」= 三态：未完成 / 已上传未打分=待审核（黄）/ 已打分=已完成（N分）
+// 上传类任务（fix202/fix203）：
+// · A「上传拼盘实操考核图片」= 纯动作（平台上传即自动打 80 分，分数无意义 → 不显示）
+// · B「上传慧运营的拼盘学习工具考核截图」= 真实考核（老师打分）：未上传=未完成 /
+//   已上传未打分=待审核（黄）/ 已打分=已完成（N分），照常进考试分数列（fix203 用户拍板：两条独立展示）
 const UPLOAD_AUTO_NAME = "上传拼盘实操考核图片"; // 平台上传即自动给 80 分的那条
 function isUploadWorkT(t) { return t && /^上传/.test(t[0] || "") && (t[0] || "").includes("拼盘"); }
+function isUpAutoT(t) { return t && t[0] === UPLOAD_AUTO_NAME; } // A 纯动作
 // 考核类任务：考试(type4)、课题名带「考核」（如「上传…考核截图」，即使还没提交/没打分
 // 也要计入应完成——fix201 龙江 S 状态漏计导致混进已完成堆）、或带分数的作业/表单
-// fix202：上传类动作任务不算考试（不进考试分数列），完成判定见 examPassT
-function isExamT(t) { return t && !isUploadWorkT(t) && (t[1] === 4 || (t[0] || "").includes("考核") || (t[3] != null && t[3] !== "-" && !isNaN(+t[3]))); }
+// fix203：只有 A 纯动作不算考试；B 是真考核，分数照常展示
+function isExamT(t) { return t && !isUpAutoT(t) && (t[1] === 4 || (t[0] || "").includes("考核") || (t[3] != null && t[3] !== "-" && !isNaN(+t[3]))); }
 // 单科考核分数展示：待阅卷橙字、未考红字、0分红字、未过红字、<80红字
 function scoreCell(t, suffix) {
   const suf = suffix === false ? "" : "分";
   if (!t) return `<span style="color:#e64340;font-weight:600">未考</span>`;
+  const upB = isUploadWorkT(t) && !isUpAutoT(t); // B 上传考核：待阅卷态叫「待审核」
   // 考试券状态：DYJ=已提交待老师阅卷；S/未提交=未考；W 但没分数=已交未阅（也归待阅卷）
-  if (t[2] === "DYJ" || t[4] === "待阅卷") return `<span style="color:#e6a23c;font-weight:600">待阅卷</span>`;
+  if (t[2] === "DYJ" || t[4] === "待阅卷") return `<span style="color:#e6a23c;font-weight:600">${upB ? "待审核" : "待阅卷"}</span>`;
   if (t[2] !== "W") return `<span style="color:#e64340;font-weight:600">未考</span>`;
   const n = +t[3];
-  if (isNaN(n)) return `<span style="color:#e6a23c;font-weight:600">待阅卷</span>`;
+  if (isNaN(n)) return `<span style="color:#e6a23c;font-weight:600">${upB ? "待审核" : "待阅卷"}</span>`;
   const bad = n < 80 || t[4] === "否";
   return `<span style="${bad ? "color:#e64340;font-weight:600" : ""}">${n}${suf}${t[4] === "否" ? "(未过)" : ""}</span>`;
 }
@@ -99,17 +101,30 @@ function examPassT(t) {
   if (t[3] != null && t[3] !== "-" && !isNaN(n)) return n >= 80;
   return t[4] === "是";
 }
+// 考核未通过判定（fix203 用户铁律：所有理论考试必须 ≥80 才合格）：
+// 有分数且 <80，或平台判「否」→ 未通过（红字 ✗），不算已完成
+function examFailT(t) {
+  if (!t || t[2] !== "W") return false;
+  if (t[4] === "否") return true;
+  const n = +t[3];
+  return t[3] != null && t[3] !== "-" && !isNaN(n) && n < 80;
+}
 // 任务完成标签（仅展示用；统计口径见 examPassT）：待阅卷单独标出，但计入未完成
-// fix202：上传类任务按动作三态展示（A 纯动作不显示分数；B 未打分=待审核）
+// fix203：考核已打分但 <80 / 判「否」→ ✗ 未通过（红），不再显示 ✓ 已完成
 function taskLabel(t) {
   if (t && isUploadWorkT(t)) {
-    if (t[0] === UPLOAD_AUTO_NAME) return t[2] === "W" ? { txt: "✓ 已完成", ok: true, pending: false } : { txt: "✗ 未完成", ok: false, pending: false };
-    if (t[2] === "W" && t[3] != null && t[3] !== "-" && !isNaN(+t[3])) return { txt: "✓ 已完成", ok: true, pending: false };
+    if (isUpAutoT(t)) return t[2] === "W" ? { txt: "✓ 已完成", ok: true, pending: false } : { txt: "✗ 未完成", ok: false, pending: false };
+    if (t[2] === "W" && t[3] != null && t[3] !== "-" && !isNaN(+t[3])) {
+      return examFailT(t) ? { txt: "✗ 未通过", ok: false, pending: false } : { txt: "✓ 已完成", ok: true, pending: false };
+    }
     if (t[2] === "W" || t[2] === "DYJ" || t[4] === "待阅卷") return { txt: "待审核", ok: false, pending: true };
     return { txt: "✗ 未完成", ok: false, pending: false };
   }
-  if (t && t[2] === "W") return { txt: "✓ 已完成", ok: true, pending: false };
   if (t && (t[4] === "待阅卷" || t[2] === "DYJ")) return { txt: "待阅卷", ok: false, pending: true };
+  if (t && t[2] === "W") {
+    if ((t[1] === 4 || isExamT(t)) && examFailT(t)) return { txt: "✗ 未通过", ok: false, pending: false };
+    return { txt: "✓ 已完成", ok: true, pending: false };
+  }
   return { txt: "✗ 未完成", ok: false, pending: false };
 }
 function stageTasksOf(p, e, stageName) {
@@ -684,7 +699,7 @@ function flatDetailTable(p, emps) {
       const [name, type, st, score, isPass] = t;
       const lb = taskLabel(t);
       let extra = "";
-      if ((type === 4 || isExamT(t)) && !lb.pending) extra = score !== "-" && score != null ? `（${score}分${isPass === "否" ? "，未过" : ""}）` : "（未考）";
+      if ((type === 4 || isExamT(t)) && !lb.pending) extra = score !== "-" && score != null ? `（${score}分）` : "（未考）";
       const col = lb.ok ? "var(--t1)" : lb.pending ? "#e6a23c" : "#e64340";
       return `<div style="padding:1px 0;color:${col}">${esc(name)}：${lb.txt}${extra}</div>`;
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
@@ -751,10 +766,10 @@ function taskBadge(t) {
   const [name, type, st, score, isPass] = t;
   const lb = taskLabel(t);
   const label = TYPE_NAME[type] || "任务";
-  let cls = lb.ok ? "b-green" : lb.pending ? "b-orange" : "b-orange";
+  let cls = lb.ok ? "b-green" : lb.txt.includes("未通过") ? "b-red" : "b-orange";
   let extra = "";
   if (isExamT(t) && !lb.pending) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
-  return `<span class="badge ${cls}" style="margin:2px 4px 2px 0">${esc(name)}（${label}）${lb.ok ? "已完成" : lb.pending ? "待阅卷" : "未完成"}${extra}</span>`;
+  return `<span class="badge ${cls}" style="margin:2px 4px 2px 0">${esc(name)}（${label}）${lb.txt.replace(/^[✓✗]\s*/, "")}${extra}</span>`;
 }
 function openStage(stageName) {
   state.stageKey = stageName;
@@ -834,13 +849,13 @@ function renderStageModal() {
       const lb = taskLabel(t);
       let extra = "", bad = !lb.ok;
       if (isUploadWorkT(t)) {
-        // 上传动作任务（fix202）：A 纯动作不显示分数；B 已打分才显示（N分），未打分=待审核由标签表达
-        if (t[0] !== UPLOAD_AUTO_NAME && lb.ok && score !== "-" && score != null && !isNaN(+score)) {
-          extra = `（${score}分${isPass === "否" ? "，未过" : ""}）`;
+        // 上传任务（fix203）：A 纯动作不显示平台自动分；B 已打分显示（N分），未打分=待审核由标签表达
+        if (!isUpAutoT(t) && t[2] === "W" && score !== "-" && score != null && !isNaN(+score)) {
+          extra = `（${score}分）`;
           if (+score < 80 || isPass === "否") bad = true;
         }
       } else if ((type === 4 || isExamT(t)) && !lb.pending) {
-        if (score !== "-" && score != null && !isNaN(+score)) { extra = `（${score}分${isPass === "否" ? "，未过" : ""}）`; if (+score < 80 || +score === 0 || isPass === "否") bad = true; }
+        if (score !== "-" && score != null && !isNaN(+score)) { extra = `（${score}分）`; if (+score < 80 || +score === 0 || isPass === "否") bad = true; }
         else extra = "（未考）";
       }
       const col = lb.ok ? "var(--t1)" : lb.pending ? "#e6a23c" : "#e64340";
@@ -859,7 +874,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），<b>未考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b>「上传拼盘实操考核图片」「上传慧运营的拼盘学习工具考核截图」为上传动作任务（fix202），<b>不计入考试分数列</b>：未上传=未完成、已上传未打分=待审核（黄）、已上传已打分=已完成（N分）；其中「上传拼盘实操考核图片」为纯上传动作（平台自动给分不显示），上传即已完成。</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），<b>未考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷/待审核 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b>「上传拼盘实操考核图片」为纯上传动作（fix203）：上传即已完成，平台自动给的 80 分不显示；「上传慧运营的拼盘学习工具考核截图」为真实考核（老师打分）：未上传=未完成、已上传未打分=待审核（黄）、已打分=已完成（N分）。<b>所有考核打分 &lt;80 分一律显示 ✗ 未通过（红）并计入未完成。</b></div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
@@ -1642,7 +1657,7 @@ function renderDirectEmpModal() {
           ${D_FORMS.map(f => `<td style="text-align:center">${dFormCell(f, t[1], done)}</td>`).join("")}
           <td>${esc(dTypeName(t[1]))}</td>
           <td>${done ? `<span style="color:#1aad19;font-weight:600">已完成</span>` : `<span style="color:#e64340;font-weight:600">未完成</span>`}</td>
-          <td>${graded ? scoreCell(t) : (t[3] != null && t[3] !== "-" ? esc(t[3]) : "—")}</td>
+          <td>${isUpAutoT(t) ? "—" : graded ? scoreCell(t) : (t[3] != null && t[3] !== "-" ? esc(t[3]) : "—")}</td>
           <td style="color:var(--t2);font-size:12px;white-space:nowrap">${t[5] && t[5] !== "-" ? esc(String(t[5]).slice(0, 16)) : "—"}</td>
         </tr>`);
       });
