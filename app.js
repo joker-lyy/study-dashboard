@@ -52,14 +52,18 @@ function barHtml(v) {
   const cls = v >= 80 ? "g" : v >= 40 ? "o" : "r";
   return `<span class="bar"><i class="${cls}" style="width:${Math.min(v, 100)}%"></i></span>${v.toFixed(1)}%`;
 }
-// 考核类任务：考试(type4) 或 带分数的作业/表单（如「上传拼盘实操考核图片」平台也打分）
-function isExamT(t) { return t && (t[1] === 4 || (t[3] != null && t[3] !== "-" && !isNaN(+t[3]))); }
-// 单科考试分数展示：未考红字、0分红字、未过红字、<80红字
+// 考核类任务：考试(type4)、课题名带「考核」（如「上传…考核截图」，即使还没提交/没打分
+// 也要计入应完成——fix201 龙江 S 状态漏计导致混进已完成堆）、或带分数的作业/表单
+function isExamT(t) { return t && (t[1] === 4 || (t[0] || "").includes("考核") || (t[3] != null && t[3] !== "-" && !isNaN(+t[3]))); }
+// 单科考核分数展示：待阅卷橙字、未考红字、0分红字、未过红字、<80红字
 function scoreCell(t, suffix) {
   const suf = suffix === false ? "" : "分";
-  if (!t || t[2] !== "W") return `<span style="color:#e64340;font-weight:600">未考</span>`;
+  if (!t) return `<span style="color:#e64340;font-weight:600">未考</span>`;
+  // 考试券状态：DYJ=已提交待老师阅卷；S/未提交=未考；W 但没分数=已交未阅（也归待阅卷）
+  if (t[2] === "DYJ" || t[4] === "待阅卷") return `<span style="color:#e6a23c;font-weight:600">待阅卷</span>`;
+  if (t[2] !== "W") return `<span style="color:#e64340;font-weight:600">未考</span>`;
   const n = +t[3];
-  if (isNaN(n)) return `<span style="color:#e64340;font-weight:600">未考</span>`;
+  if (isNaN(n)) return `<span style="color:#e6a23c;font-weight:600">待阅卷</span>`;
   const bad = n < 80 || t[4] === "否";
   return `<span style="${bad ? "color:#e64340;font-weight:600" : ""}">${n}${suf}${t[4] === "否" ? "(未过)" : ""}</span>`;
 }
@@ -68,14 +72,14 @@ function esc(s) { return (s == null ? "" : String(s)).replace(/[<>&"]/g, c => ({
 /* ---------- 阶段完成口径（2026-09-18 Rain 定稿）----------
    完成率 = (必修课完成项数 + 考试合格科数) ÷ (必修课应完成项数 + 考试应完成科数)
    · 必修课 = 网课(3)/实操课(8)，完成 = 任务状态 W
-   · 考核类 = 考试(type4) 或 平台要打分/阅卷的任务（有阅卷结论或带分数）——
-     含「上传考核截图」这类作业，平台判分后才算完成
+   · 考核类 = 考试(type4)、课题名带「考核」的任务（如「上传…考核截图」，fix201 起
+     未提交/未打分也计入应完成，否则没提交的人会漏计混进「已完成」）或带分数的任务
    · 考核合格 = 已完成(W) 且 未被判「否」 且（有分数时 ≥80）；「待阅卷」不算合格
    · 无判分的普通作业/表单(5/7)只在明细里展示，不计入完成率
    ⚠️ 平台 stageStatistics 的已完成/完成率与真实任务数据不符（182期第四天平台报
    100%，实际全员截图待阅卷）→ 有员工明细时一律按真实任务口径重算。 */
 function isGradedT(t) {
-  return t && (t[1] === 4 || (t[4] != null && t[4] !== "-") ||
+  return t && (t[1] === 4 || (t[0] || "").includes("考核") || (t[4] != null && t[4] !== "-") ||
     (t[3] != null && t[3] !== "-" && !isNaN(+t[3])));
 }
 function examPassT(t) {
@@ -89,7 +93,7 @@ function examPassT(t) {
 // 任务完成标签（仅展示用；统计口径见 examPassT）：待阅卷单独标出，但计入未完成
 function taskLabel(t) {
   if (t && t[2] === "W") return { txt: "✓ 已完成", ok: true, pending: false };
-  if (t && t[4] === "待阅卷") return { txt: "待阅卷", ok: false, pending: true };
+  if (t && (t[4] === "待阅卷" || t[2] === "DYJ")) return { txt: "待阅卷", ok: false, pending: true };
   return { txt: "✗ 未完成", ok: false, pending: false };
 }
 function stageTasksOf(p, e, stageName) {
@@ -733,7 +737,7 @@ function taskBadge(t) {
   const label = TYPE_NAME[type] || "任务";
   let cls = lb.ok ? "b-green" : lb.pending ? "b-orange" : "b-orange";
   let extra = "";
-  if (type === 4 && !lb.pending) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
+  if (isExamT(t) && !lb.pending) extra = score !== "-" && score != null ? ` ${score}分${isPass === "否" ? "(未过)" : ""}` : " 未考";
   return `<span class="badge ${cls}" style="margin:2px 4px 2px 0">${esc(name)}（${label}）${lb.ok ? "已完成" : lb.pending ? "待阅卷" : "未完成"}${extra}</span>`;
 }
 function openStage(stageName) {
@@ -815,7 +819,7 @@ function renderStageModal() {
       let extra = "", bad = !lb.ok;
       if ((type === 4 || isExamT(t)) && !lb.pending) {
         if (score !== "-" && score != null && !isNaN(+score)) { extra = `（${score}分${isPass === "否" ? "，未过" : ""}）`; if (+score < 80 || +score === 0 || isPass === "否") bad = true; }
-        else if (type === 4) extra = "（未考）";
+        else extra = "（未考）";
       }
       const col = lb.ok ? "var(--t1)" : lb.pending ? "#e6a23c" : "#e64340";
       return `<div style="padding:1px 0;color:${col}">${esc(name)}：${lb.txt}${extra}</div>`;
@@ -833,7 +837,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），未考=当天有考试但未完成，—=当天无考试安排，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷 单独标注（黄色），统计上计入未完成。</b></div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），<b>未考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b></div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
