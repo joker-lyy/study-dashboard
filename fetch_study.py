@@ -277,16 +277,40 @@ def fetch_plan_detail(tok, plan):
 
 def fetch_maps(tok):
     """晋升学习地图：/web/learnMap/list 拿地图名单，
-    每张地图用 /web/reportForm/learnStatisticsEmpOfMap 分页拉全部在职学员进度。"""
+    每张地图用 /web/reportForm/learnStatisticsEmpOfMap 分页拉全部在职学员进度。
+    2026-09-21 兜底：平台把 888 可见范围收窄后 learnMap/list 只剩新手村 4 张
+    （6 张晋升图从列表消失），但按 mapId 直接查学员接口仍正常 →
+    用 data/known_maps.json 记录的历史地图清单补齐，防止再被平台端变化打断。"""
+    known_path = os.path.join(HERE, "data", "known_maps.json")
+    known = {}
+    if os.path.exists(known_path):
+        try:
+            known = json.load(open(known_path, encoding="utf-8"))
+        except Exception as e:
+            print(f"  [警告] known_maps.json 解析失败: {e}")
+            known = {}
+
     d, err = call(tok, "/web/learnMap/list?version=1", {"pageIndex": 1, "pageSize": 50})
+    listed = []
     if err or not d:
-        print(f"[学习地图] 列表失败: {err}")
-        return []
-    maps = []
-    for m in d.get("list", []):
-        maps.append({"mapId": m.get("mapId"), "mapName": m.get("mapName"),
-                     "categoryName": m.get("categoryName"), "status": m.get("status")})
-    print(f"学习地图: {len(maps)} 张")
+        print(f"[学习地图] 列表失败: {err}（尝试用本地已知清单兜底）")
+    else:
+        for m in d.get("list", []):
+            listed.append({"mapId": m.get("mapId"), "mapName": m.get("mapName"),
+                           "categoryName": m.get("categoryName"), "status": m.get("status")})
+    by_id = {str(m["mapId"]): m for m in listed}
+    added = 0
+    for mid, info in (known or {}).items():
+        if mid not in by_id:
+            by_id[mid] = {"mapId": mid, "mapName": info.get("mapName"),
+                          "categoryName": info.get("categoryName"),
+                          "status": info.get("status"), "_fromKnown": True}
+            added += 1
+    maps = list(by_id.values())
+    print(f"学习地图: 平台列表 {len(listed)} 张" + (f" + 本地兜底 {added} 张 = {len(maps)} 张" if added else ""))
+    if added:
+        print("  [提示] 平台可见地图变少（888 可见范围又被收窄？），晋升图学员只能抓到可见的那部分；"
+              "恢复完整需慧运营管理员把 888 的组织可见范围放开")
 
     def fetch_map_emps(mp):
         emps, page = [], 1
@@ -307,6 +331,23 @@ def fetch_maps(tok):
 
     with ThreadPoolExecutor(max_workers=MAP_WORKERS) as ex:
         maps = list(ex.map(fetch_map_emps, maps))
+    # 回写已知地图清单（含本轮学员数，供下轮对比）
+    try:
+        prev_total = sum(int(v.get("lastEmpCount") or 0) for v in (known or {}).values())
+        for mp in maps:
+            known[str(mp["mapId"])] = {"mapName": mp.get("mapName"),
+                                       "categoryName": mp.get("categoryName"),
+                                       "status": mp.get("status"),
+                                       "lastEmpCount": mp.get("empCount"),
+                                       "lastSeen": time.strftime("%Y-%m-%d")}
+        with open(known_path, "w", encoding="utf-8") as f:
+            json.dump(known, f, ensure_ascii=False, indent=1)
+        cur_total = sum(mp.get("empCount") or 0 for mp in maps)
+        if prev_total and cur_total < prev_total * 0.5:
+            print(f"  [塌陷警告] 地图学员总数 {prev_total} -> {cur_total}（<50%），"
+                  f"多半是 888 可见范围又被平台收窄；本轮仍照常写盘")
+    except Exception as e:
+        print(f"  [警告] known_maps.json 回写失败: {e}")
     return maps
 
 def is_direct_emp(e):
