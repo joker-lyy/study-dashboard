@@ -52,9 +52,29 @@ function barHtml(v) {
   const cls = v >= 80 ? "g" : v >= 40 ? "o" : "r";
   return `<span class="bar"><i class="${cls}" style="width:${Math.min(v, 100)}%"></i></span>${v.toFixed(1)}%`;
 }
+// 上传类动作任务（fix202）：拼盘截图上传是「动作」不是考试——平台上传即自动打 80 分，
+// 该分数无意义，不进考试分数列；三态：未上传=未完成 / 已上传未打分=待审核 / 已打分=已完成（N分）
+const UPLOAD_AUTO_NAME = "上传拼盘实操考核图片"; // 平台上传即自动给 80 分的那条
+function isUploadWorkT(t) { return t && /^上传/.test(t[0] || "") && (t[0] || "").includes("拼盘"); }
+// 同一阶段里 A（自动80那条）与 B（老师打分的「上传慧运营的拼盘学习工具考核截图」）并存
+// → 合并成一项（同一项工作，fix202 用户拍板）：分数取 B（老师真实打分）；
+//   已上传但没分数 → DYJ（展示为「待审核」）；都没上传 → S（未完成）
+function mergeUploadWork(ts) {
+  if (!ts || !ts.length) return ts || [];
+  const ai = ts.findIndex(t => t[0] === UPLOAD_AUTO_NAME);
+  if (ai < 0) return ts; // 没有 A（纯 B 或无上传任务）→ 原样
+  const b = ts.find(t => isUploadWorkT(t) && t[0] !== UPLOAD_AUTO_NAME);
+  if (!b) return ts;     // 只有 A（如 176~181 期）→ 原样，保持历史展示不变
+  const a = ts[ai];
+  const n = b[3] != null && b[3] !== "-" && !isNaN(+b[3]) ? +b[3] : null;
+  const up = a[2] === "W" || b[2] === "W" || b[2] === "DYJ";
+  const m = [a[0], b[1], n != null ? "W" : up ? "DYJ" : "S", n != null ? String(n) : "-", n != null ? (b[4] === "否" ? "否" : "是") : "-", b[5] || a[5] || "-"];
+  return ts.filter((_, i) => i !== ai).map(t => (t === b ? m : t));
+}
 // 考核类任务：考试(type4)、课题名带「考核」（如「上传…考核截图」，即使还没提交/没打分
 // 也要计入应完成——fix201 龙江 S 状态漏计导致混进已完成堆）、或带分数的作业/表单
-function isExamT(t) { return t && (t[1] === 4 || (t[0] || "").includes("考核") || (t[3] != null && t[3] !== "-" && !isNaN(+t[3]))); }
+// fix202：上传类动作任务不算考试（不进考试分数列），统计口径经 mergeUploadWork 去重
+function isExamT(t) { return t && !isUploadWorkT(t) && (t[1] === 4 || (t[0] || "").includes("考核") || (t[3] != null && t[3] !== "-" && !isNaN(+t[3]))); }
 // 单科考核分数展示：待阅卷橙字、未考红字、0分红字、未过红字、<80红字
 function scoreCell(t, suffix) {
   const suf = suffix === false ? "" : "分";
@@ -93,7 +113,7 @@ function examPassT(t) {
 // 任务完成标签（仅展示用；统计口径见 examPassT）：待阅卷单独标出，但计入未完成
 function taskLabel(t) {
   if (t && t[2] === "W") return { txt: "✓ 已完成", ok: true, pending: false };
-  if (t && (t[4] === "待阅卷" || t[2] === "DYJ")) return { txt: "待阅卷", ok: false, pending: true };
+  if (t && (t[4] === "待阅卷" || t[2] === "DYJ")) return { txt: isUploadWorkT(t) ? "待审核" : "待阅卷", ok: false, pending: true };
   return { txt: "✗ 未完成", ok: false, pending: false };
 }
 function stageTasksOf(p, e, stageName) {
@@ -104,13 +124,14 @@ function stageTasksOf(p, e, stageName) {
 // 单学员单阶段「需完成项」合计 {total, done}（必修 + 考核按项计，其余类型不计）
 function stageRequired(p, e, stageName) {
   const { det, stg, ts } = stageTasksOf(p, e, stageName);
+  const tv = mergeUploadWork(ts); // fix202：A+B 并存时合并为一项（按 B 的老师打分判定）
   let total = 0, done = 0;
-  ts.forEach(t => {
+  tv.forEach(t => {
     if (isGradedT(t)) { total++; if (examPassT(t)) done++; }
     else if (t[1] === 3 || t[1] === 8) { total++; if (t[2] === "W") done++; }
   });
   // 该阶段只有普通作业/表单（无必修无考核）→ 退回全部任务口径，保证能归档状态
-  if (!total) { total = ts.length; done = ts.filter(t => t[2] === "W").length; }
+  if (!total) { total = tv.length; done = tv.filter(t => t[2] === "W").length; }
   return { total, done, hasStage: !!det && !!stg, hasEmp: !!det };
 }
 
@@ -382,7 +403,7 @@ function empStat(p, e) {
   const det = p.empDetails && p.empDetails[String(e.employeeId)];
   if (!det || det.total == null) return null;
   let total = 0, done = 0;
-  (det.stages || []).forEach(s => (s.t || []).forEach(t => {
+  (det.stages || []).forEach(s => mergeUploadWork(s.t || []).forEach(t => {
     if (isGradedT(t)) { total++; if (examPassT(t)) done++; }
     else if (t[1] === 3 || t[1] === 8) { total++; if (t[2] === "W") done++; }
   }));
@@ -800,7 +821,7 @@ function renderStageModal() {
   };
   const rows = emps.map(e => {
     const stage = stageOf(e);
-    const ts = stage ? stage.t : [];
+    const ts = mergeUploadWork(stage ? stage.t : []); // fix202：A+B 合并为一项展示
     // 必修课=网课(3)+实操课(8)：实操视频课同为强制学习；作业/表单(5/7)单列
     const learn = ts.filter(t => t[1] === 3 || t[1] === 8), exams = ts.filter(isExamT), ops = ts.filter(t => [5, 7].includes(t[1]));
     const cnt = a => a.length ? `${a.filter(t => t[2] === "W").length}/${a.length}` : "—";
@@ -817,7 +838,7 @@ function renderStageModal() {
       const [name, type, st, score, isPass] = t;
       const lb = taskLabel(t);
       let extra = "", bad = !lb.ok;
-      if ((type === 4 || isExamT(t)) && !lb.pending) {
+      if ((type === 4 || isExamT(t) || isUploadWorkT(t)) && !lb.pending) {
         if (score !== "-" && score != null && !isNaN(+score)) { extra = `（${score}分${isPass === "否" ? "，未过" : ""}）`; if (+score < 80 || +score === 0 || isPass === "否") bad = true; }
         else extra = "（未考）";
       }
@@ -837,7 +858,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），<b>未考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b></div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），<b>未考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b>「上传拼盘实操考核图片」为上传动作任务（fix202）：<b>未上传=未完成、已上传未打分=待审核（黄）、已上传已打分=已完成（N分）</b>；它与「上传慧运营的拼盘学习工具考核截图」是同一项工作，合并显示且不计入考试分数列。</div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
