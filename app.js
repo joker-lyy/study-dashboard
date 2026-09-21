@@ -48,9 +48,11 @@ function pct(s) {
   if (!s) return 0;
   return parseFloat(String(s).replace("%", "")) || 0;
 }
-function barHtml(v) {
+function barHtml(v, strict100) {
   const cls = v >= 80 ? "g" : v >= 40 ? "o" : "r";
-  return `<span class="bar"><i class="${cls}" style="width:${Math.min(v, 100)}%"></i></span>${v.toFixed(1)}%`;
+  // strict100：该列满 100% 才算达标，<100% 数字反红（当前阶段完成情况专用，fix205）
+  const num = strict100 && v < 100 ? `<span style="color:#e64340;font-weight:600">${v.toFixed(1)}%</span>` : `${v.toFixed(1)}%`;
+  return `<span class="bar"><i class="${cls}" style="width:${Math.min(v, 100)}%"></i></span>${num}`;
 }
 // 上传类任务（fix202/fix203）：
 // · A「上传拼盘实操考核图片」= 纯动作（平台上传即自动打 80 分，分数无意义 → 不显示）
@@ -762,7 +764,7 @@ function storeRankTable(p) {
       <td>${i + 1}</td><td style="white-space:nowrap">${esc(r.s.storeName)}</td>
       <td style="color:var(--t2)">${esc(r.region)}</td>
       <td style="text-align:center">${r.empN}</td>
-      <td>${r.stageRate == null ? `<span style="color:var(--t2)">—</span>` : barHtml(r.stageRate)}</td>
+      <td>${r.stageRate == null ? `<span style="color:var(--t2)">—</span>` : barHtml(r.stageRate, true)}</td>
       <td>${barHtml(r.rate)}</td>
       <td><span class="badge ${r.s.storeStudyStatus === "已参训" ? "b-green" : "b-orange"}">${esc(r.s.storeStudyStatus || "-")}</span></td>
       <td style="text-align:center"><button class="btn" style="padding:4px 10px;font-size:12px" onclick="event.stopPropagation();openStore('${r.s.storeId}')">查看明细</button></td>
