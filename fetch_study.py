@@ -57,6 +57,196 @@ def plan_cat(p):
         return "裂变加盟商培训"
     return classify(p.get("categoryName") or "") or classify(n) or "其他"
 
+
+# ── fix204 截至昨日进度冻结统计（Rain 2026-09-22 定稿）──────────────────
+# 需求：门店排名表「当前阶段完成情况」= 截至昨日 23:59 已完成（需合格）任务 ÷ 当时应完成任务；
+#       该统计只在每天凌晨同步时计算一次，白天各轮更新原样沿用——白天补做会让
+#       "昨天该完成的"虚增，统计就偏差了。
+# 实现：凌晨(hour<6)本轮抓完即算 asOf=昨天挂到每个计划 p["frozen"]；
+#       白天轮从旧 data.json 按 planId 原样搬运；旧数据没有（凌晨轮失败）→
+#       白天轮现场算一次并标 approx=1（实时近似，前端会注明）。
+# 口径与前端 app.js empStat/required 完全一致：必修课(3/8)=状态W；
+# 考核(考试4/课题名带「考核」/带分数)=W 且未判否/待阅卷 且(分数≥80 或 平台判「是」)；
+# 上传考核B已交未打分=待审核不算完成；A「上传拼盘实操考核图片」纯动作 W 即完成。
+# 仅把统计范围从「全部阶段」收窄为「应完成日期 ≤ asOf 的阶段」（应完成日期推算同 app.js dueDateOf）。
+
+UPLOAD_AUTO_NAME = "上传拼盘实操考核图片"  # A 纯动作（与 app.js 同名常量）
+_CN_D = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+
+
+def _num(x):
+    """镜像 JS +x/isNaN：数字返回 float；空串按 0（JS +"" === 0）；其余 None"""
+    if x is None or isinstance(x, bool):
+        return None
+    if isinstance(x, (int, float)):
+        return float(x)
+    s = str(x).strip()
+    if s == "":
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _cn_day_num(s):
+    """镜像 app.js cnDayNum：「第N天」/「第中文数字天」→ int 或 None"""
+    import re
+    m = re.search(r"第([0-9０-９]+)天", s or "")
+    if m:
+        return int(m.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+    m2 = re.search(r"第([一二三四五六七八九十]+)天", s or "")
+    if not m2:
+        return None
+    cn = m2.group(1)
+    if cn == "十":
+        return 10
+    i = cn.find("十")
+    if i == -1:
+        return _CN_D.get(cn)
+    n = 0
+    if i > 0:
+        n += _CN_D.get(cn[0], 0)
+    n *= 10
+    if i < len(cn) - 1:
+        n += _CN_D.get(cn[i + 1], 0)
+    return n
+
+
+def _due_date(plan, stage_name):
+    """镜像 app.js dueDateOf：startDate + 阶段在 stageStats 的序号天；
+    序号找不到退回阶段名「第N天」；推算不出返回 None"""
+    from datetime import datetime, timedelta
+    sd = plan.get("startDate")
+    if not sd:
+        return None
+    try:
+        dt = datetime.strptime(str(sd)[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+    ss = plan.get("stageStats") or []
+    sn = stage_name or ""
+    idx = -1
+    for i, x in enumerate(ss):
+        if (x.get("phaseName") or "") == sn:
+            idx = i
+            break
+    if idx >= 0:
+        dt += timedelta(days=idx)
+    else:
+        d = _cn_day_num(sn)
+        if d is None:
+            return None
+        dt += timedelta(days=d - 1)
+    return dt.date()
+
+
+def _is_upload_work(t):
+    name = t[0] or ""
+    return name.startswith("上传") and "拼盘" in name
+
+
+def _is_graded_t(t):
+    """镜像 app.js isGradedT"""
+    name, typ, score, is_pass = t[0], t[1], t[3], t[4]
+    if typ == 4:
+        return True
+    if "考核" in (name or ""):
+        return True
+    if is_pass is not None and is_pass != "-":
+        return True
+    return _num(score) is not None
+
+
+def _exam_pass_t(t):
+    """镜像 app.js examPassT"""
+    name, st, score, is_pass = t[0], t[2], t[3], t[4]
+    if st != "W":
+        return False
+    if is_pass in ("否", "待阅卷"):
+        return False
+    if _is_upload_work(t) and name != UPLOAD_AUTO_NAME and _num(score) is None:
+        return False  # 上传考核B：已交未打分 = 待审核 ≠ 完成
+    n = _num(score)
+    if n is not None:
+        return n >= 80
+    return is_pass == "是"
+
+
+def _frozen_emp_stat(plan, det, as_of, due_cache):
+    """单学员截至 asOf 的 [done, total]，仅统计应完成日期 ≤ asOf 的阶段"""
+    total = done = 0
+    for s in det.get("stages", []):
+        sn = s.get("n") or ""
+        if sn not in due_cache:
+            d = _due_date(plan, sn)
+            due_cache[sn] = (d is None) or (d <= as_of)  # 推算不出→按已到期（同 app.js isStageDue）
+        if not due_cache[sn]:
+            continue
+        for t in s.get("t", []):
+            if _is_graded_t(t):
+                total += 1
+                if _exam_pass_t(t):
+                    done += 1
+            elif t[1] in (3, 8):
+                total += 1
+                if t[2] == "W":
+                    done += 1
+    return [done, total]
+
+
+def compute_frozen(p, as_of):
+    """整计划截至 asOf 的冻结进度 {"asOf": "...", "emps": {"<employeeId>": [done, total]}}
+    total=0 的学员也保留（表示截至昨日还没有应完成项，前端不计入/不拉低分母）"""
+    due_cache = {}
+    emps_out = {}
+    for eid, det in (p.get("empDetails") or {}).items():
+        emps_out[str(eid)] = _frozen_emp_stat(p, det or {}, as_of, due_cache)
+    return {"asOf": as_of.isoformat(), "emps": emps_out}
+
+
+def _load_prev_frozen():
+    """上一版 data.json 各计划的 frozen 块（白天轮搬运用），读取失败返回空"""
+    try:
+        with open(os.path.join(HERE, "data", "data.json"), encoding="utf-8") as f:
+            prev = json.load(f)
+        return {str(p.get("planId")): p["frozen"]
+                for p in (prev.get("plans") or []) if p.get("frozen")}
+    except Exception:
+        return {}
+
+
+def attach_frozen(data):
+    """按 fix204 规则给每个计划挂 frozen 块"""
+    from datetime import date, timedelta
+    as_of = date.today() - timedelta(days=1)
+    night = time.localtime().tm_hour < 6
+    prev = {} if night else _load_prev_frozen()
+    n_fresh = n_carry = n_approx = 0
+    as_of_s = as_of.isoformat()
+    for p in data.get("plans", []):
+        if p.get("fetchError"):
+            continue
+        pid = str(p.get("planId"))
+        if night:
+            try:
+                p["frozen"] = compute_frozen(p, as_of)
+                n_fresh += 1
+            except Exception as e:
+                print(f"  [冻结统计失败] {p.get('planName')}: {e}")
+        elif prev.get(pid) and prev[pid].get("asOf") == as_of_s:
+            p["frozen"] = prev[pid]
+            n_carry += 1
+        else:
+            try:
+                fz = compute_frozen(p, as_of)
+                fz["approx"] = 1
+                p["frozen"] = fz
+                n_approx += 1
+            except Exception as e:
+                print(f"  [冻结统计失败(近似)] {p.get('planName')}: {e}")
+    print(f"冻结统计(asOf={as_of_s}): 凌晨新算 {n_fresh} / 白天沿用 {n_carry} / 近似补算 {n_approx}")
+
 def _sign(n, t):
     return hashlib.sha256(f"{n}{t}{SECRET}".encode()).hexdigest()
 
@@ -575,6 +765,9 @@ def main():
             n_fail += 1
             data["plans"].append({"planId": p["planId"], "planName": p["planName"],
                                   "category": p["_cat"], "fetchError": str(e)[:200]})
+
+    # fix204：截至昨日进度冻结统计（凌晨算/白天沿用，详见 attach_frozen 注释）
+    attach_frozen(data)
 
     os.makedirs(os.path.join(HERE, "data"), exist_ok=True)
     out_path = os.path.join(HERE, "data", "data.json")

@@ -730,18 +730,26 @@ function storeScore(s) {
   return train * 0.3 + comp * 0.7;
 }
 function storeRankTable(p) {
-  // 完成率按员工明细实时联动（done/total），平台字段为0时兜底
+  // 两列口径（fix204 Rain 2026-09-22 定稿）：
+  // · 当前阶段完成情况 = 截至「昨天23:59」已完成(需合格)任务 ÷ 当时应完成任务；
+  //   冻结值由数据管线每天凌晨同步算好写进 p.frozen（asOf=昨天），白天各轮更新原样沿用，
+  //   防止白天补做把"昨天该完成的"虚增造成偏差；无冻结数据时显示 —（等下次凌晨同步）
+  // · 总学习进度 = 全部任务实时完成进度（empStat 口径），随每次数据同步实时更新
+  const fz = p.frozen && p.frozen.asOf ? p.frozen : null;
   const rows = (p.storeStats || []).map(s => {
     const emps = (p.emps || []).filter(e => storeOf(e) === s.storeName && statusOf(e) != null);
-    let done = 0, total = 0, doneN = 0;
+    let fDone = 0, fTotal = 0, done = 0, total = 0;
     emps.forEach(e => {
+      const fe = fz && fz.emps && fz.emps[String(e.employeeId)];
+      if (fe) { fDone += fe[0]; fTotal += fe[1]; }
       const st = empStat(p, e);
-      if (st) { done += st.done; total += st.total; if (st.total && st.done >= st.total) doneN++; }
+      if (st) { done += st.done; total += st.total; }
     });
+    const stageRate = fTotal ? fDone / fTotal * 100 : null;
     const rate = total ? done / total * 100 : pct(s.completionRate || s.ztwclValue);
     const link = (s.organizeLink || "").split("/").filter(Boolean);
-    return { s, rate, empN: emps.length, doneN, region: link[link.length - 1] || "" };
-  }).sort((a, b) => b.rate - a.rate);
+    return { s, stageRate, rate, empN: emps.length, region: link[link.length - 1] || "" };
+  }).sort((a, b) => (b.stageRate == null ? -1 : b.stageRate) - (a.stageRate == null ? -1 : a.stageRate) || b.rate - a.rate);
   const kw = (state.storeSearch || "").trim().toLowerCase();
   const shown = kw ? rows.filter(r => (r.s.storeName || "").toLowerCase().includes(kw) || (r.region || "").toLowerCase().includes(kw)) : rows;
   if (!rows.length) return `<div class="empty">暂无门店数据</div>`;
@@ -749,16 +757,17 @@ function storeRankTable(p) {
     <input id="storeSearch" placeholder="搜索门店 / 区域…" value="${esc(state.storeSearch || "")}" oninput="state.storeSearch=this.value;if(!window.__storeSearchIME)setTimeout(()=>{if(!window.__storeSearchIME){renderCat();var i=document.getElementById('storeSearch');if(i){i.focus();var v=i.value;i.setSelectionRange(v.length,v.length);}}},300)" oncompositionstart="window.__storeSearchIME=1" oncompositionend="window.__storeSearchIME=0;state.storeSearch=this.value;renderCat()" onkeydown="if(event.key==='Enter'){window.__storeSearchIME=0;state.storeSearch=this.value;renderCat()}" style="padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;width:220px">
     <span style="font-size:12px;color:var(--t2)">${kw ? `匹配 ${shown.length} / ${rows.length} 家` : `共 ${rows.length} 家`}</span>
   </div>
-  <table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th>已完成人数</th><th>完成率</th><th>状态</th><th style="width:90px">操作</th></tr>
+  <table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th title="${fz ? `截至 ${fz.asOf} 23:59：已完成（需合格）任务 ÷ 应完成任务（凌晨同步冻结，白天不刷新）` : "冻结统计未生成，待下次凌晨同步"}">当前阶段完成情况</th><th title="全部任务实时完成进度（随每次数据同步更新）">总学习进度</th><th>状态</th><th style="width:90px">操作</th></tr>
     ${shown.map((r, i) => `<tr>
       <td>${i + 1}</td><td style="white-space:nowrap">${esc(r.s.storeName)}</td>
       <td style="color:var(--t2)">${esc(r.region)}</td>
-      <td style="text-align:center">${r.empN}</td><td style="text-align:center">${r.doneN}</td>
+      <td style="text-align:center">${r.empN}</td>
+      <td>${r.stageRate == null ? `<span style="color:var(--t2)">—</span>` : barHtml(r.stageRate)}</td>
       <td>${barHtml(r.rate)}</td>
       <td><span class="badge ${r.s.storeStudyStatus === "已参训" ? "b-green" : "b-orange"}">${esc(r.s.storeStudyStatus || "-")}</span></td>
       <td style="text-align:center"><button class="btn" style="padding:4px 10px;font-size:12px" onclick="event.stopPropagation();openStore('${r.s.storeId}')">查看明细</button></td>
     </tr>`).join("")}</table>
-    <div style="margin-top:8px;font-size:12px;color:var(--t2)">完成率 = 门店学员已完成任务 ÷ 应完成任务（按学习明细实时统计），点「查看明细」看门店员工学习明细</div>`;
+    <div style="margin-top:8px;font-size:12px;color:var(--t2)">当前阶段完成情况 = 截至 ${fz ? fz.asOf : "—"} 23:59 已完成（需合格）任务 ÷ 应完成任务，每日凌晨同步时计算一次、白天沿用不刷新${fz && fz.approx ? "（凌晨同步缺失，当前为近似值）" : ""}${fz ? "" : "（冻结统计未生成，待下次凌晨同步）"}；总学习进度 = 全部任务实时完成进度，随每次数据同步更新；点「查看明细」看门店员工学习明细</div>`;
 }
 
 /* ---------- 阶段学员明细弹窗 ---------- */
