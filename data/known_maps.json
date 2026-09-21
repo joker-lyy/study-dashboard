@@ -4,69 +4,69 @@
   "categoryName": "新手村",
   "status": 1,
   "lastEmpCount": 0,
-  "lastSeen": "2026-09-21"
+  "lastSeen": "2026-09-22"
  },
  "10000001563789": {
   "mapName": "加盟商开业前置学习地图",
   "categoryName": "新手村",
   "status": 1,
   "lastEmpCount": 0,
-  "lastSeen": "2026-09-21"
+  "lastSeen": "2026-09-22"
  },
  "10000001563604": {
   "mapName": "加盟商伙伴开业前置学习地图",
   "categoryName": "新手村",
   "status": 3,
   "lastEmpCount": 0,
-  "lastSeen": "2026-09-21"
+  "lastSeen": "2026-09-22"
  },
  "10000001562854": {
   "mapName": "加盟商开业前置学习地图",
   "categoryName": "新手村",
   "status": 3,
   "lastEmpCount": 1,
-  "lastSeen": "2026-09-21"
+  "lastSeen": "2026-09-22"
  },
  "10000000052419": {
   "mapName": "初级学徒转正",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 56,
-  "lastSeen": "2026-09-21"
+  "lastEmpCount": 824,
+  "lastSeen": "2026-09-22"
  },
  "10000000052207": {
   "mapName": "学徒学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 47,
-  "lastSeen": "2026-09-21"
+  "lastEmpCount": 395,
+  "lastSeen": "2026-09-22"
  },
  "10000000052072": {
   "mapName": "初级师傅学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 43,
-  "lastSeen": "2026-09-21"
+  "lastEmpCount": 382,
+  "lastSeen": "2026-09-22"
  },
  "10000000051948": {
   "mapName": "中级师傅学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 37,
-  "lastSeen": "2026-09-21"
+  "lastEmpCount": 345,
+  "lastSeen": "2026-09-22"
  },
  "10000000051852": {
   "mapName": "星级师傅学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 33,
-  "lastSeen": "2026-09-21"
+  "lastEmpCount": 339,
+  "lastSeen": "2026-09-22"
  },
  "10000000050123": {
   "mapName": "店长学习地图",
   "categoryName": "晋升",
   "status": 1,
-  "lastEmpCount": 23,
-  "lastSeen": "2026-09-21"
+  "lastEmpCount": 327,
+  "lastSeen": "2026-09-22"
  }
 }
