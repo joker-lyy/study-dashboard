@@ -9,6 +9,10 @@
 
 ① 无黑框：由「启动看板.vbs」/看板管家用 pythonw 无窗口拉起
 ② 空闲自退：网页关掉后约 3 分钟自动退出，不在后台留进程（正在更新时不退）
+③ 触发来源：POST /update?src=xxx 决定推送理由（timer→定时刷新；夜间快照更新→原样透传；
+   不传→页面手动更新），最终进 _push_inc.py 的提交信息与通知判定（与 board_butler.py 约定一致）
+④ 本机（Rain）补丁、勿提交入库：PY 指向本机 python（honor 基线的写死路径在本机不存在）、
+   子进程不弹窗、启动时顺带保活看板管家 8766
 """
 import collections
 import json
@@ -17,7 +21,9 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 # 被 pythonw（无控制台）启动时 stdout 为 None，print 会抛异常 → 兜底到空设备
 if sys.stdout is None or sys.stderr is None:
@@ -27,10 +33,19 @@ if sys.stdout is None or sys.stderr is None:
 
 PORT = 8767
 DIR = os.path.dirname(os.path.abspath(__file__))
-PY = r"C:\Users\honor\.workbuddy\binaries\python\envs\default\Scripts\python.exe"
+# 本机 python 路径（honor 基线写死 honor 路径在本机不存在 → 子进程必挂）
+PY = os.environ.get("STUDY_PY") or r"C:\Users\Rain\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+PYW = os.environ.get("STUDY_PYW") or r"C:\Users\Rain\.workbuddy\binaries\python\versions\3.13.12\pythonw.exe"
 LOG_PATH = os.path.join(DIR, "data", "_update_log.txt")
 
 IDLE_EXIT = int(os.environ.get("BOARD_IDLE_EXIT", "180"))     # 秒；0 = 不退（常驻）
+
+# 子进程不弹黑框（pythonw 下无影响；普通 python 拉起时防闪窗）
+_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+# 本机直连 opener（127.0.0.1 不走系统代理：代理环境下裸 urlopen 会 502，
+# 导致 _butler_alive 误判管家不在 → 每次启动都重复拉起一个管家，2026-09-21 加固）
+_OP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 state = {"running": False, "startedAt": None, "lastMsg": "", "lastOk": None}
 log_tail = collections.deque(maxlen=200)
@@ -57,7 +72,8 @@ def log(msg):
 
 def run_step(args):
     p = subprocess.run(args, cwd=DIR, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=1800)
+                       encoding="utf-8", errors="replace", timeout=1800,
+                       creationflags=_CREATIONFLAGS)
     out = (p.stdout or "") + (p.stderr or "")
     for ln in out.splitlines():
         if ln.strip():
@@ -65,10 +81,10 @@ def run_step(args):
     return p.returncode, out
 
 
-def update_job():
+def update_job(reason="页面手动更新"):
     global state
     try:
-        log("===== 【学习看板】开始更新 =====")
+        log("===== 【学习看板】开始更新（%s）=====" % reason)
         rc1, out1 = run_step([PY, "fetch_study.py"])
         ok1 = rc1 == 0 and "完成: 成功" in out1 and "成功0 失败" not in out1
         if not ok1:
@@ -76,7 +92,7 @@ def update_job():
             log("!! 抓数失败，不推送")
             return
         log("【学习看板】抓数完成，开始推送...")
-        rc2, out2 = run_step([PY, "_push_inc.py", "页面手动更新"])
+        rc2, out2 = run_step([PY, "_push_inc.py", reason])
         ok2 = rc2 == 0 and ("main 更新 OK" in out2 or "OK ->" in out2)
         if ok2:
             commit = ""
@@ -91,6 +107,29 @@ def update_job():
     except Exception as e:
         state.update(running=False, lastOk=False, lastMsg="异常: %s" % e)
         log("!! 异常: %s" % e)
+
+
+def _butler_alive():
+    try:
+        with _OP.open("http://127.0.0.1:8766/health", timeout=1.5) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _ensure_butler():
+    """看板管家（8766）不在时用 pythonw 拉起：定时刷新、页面 wake 都依赖管家。
+    端口已被占 = 管家已在跑，直接返回。"""
+    if _butler_alive():
+        return
+    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    try:
+        subprocess.Popen([PYW, os.path.join(DIR, "board_butler.py")], cwd=DIR,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=flags)
+        log("已自动拉起看板管家(8766)")
+    except Exception as e:
+        log("!! 拉起看板管家失败: %s" % e)
 
 
 class H(SimpleHTTPRequestHandler):
@@ -138,14 +177,22 @@ class H(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        if self.path.startswith("/update"):
+        if self.path.split("?")[0].startswith("/update"):
+            # 解析 ?src= 触发来源（board_butler.py：timer=白天定时；夜间快照更新=22:30 夜间档）
+            src = ""
+            try:
+                q = parse_qs(urlparse(self.path).query)
+                src = (q.get("src") or [""])[0].strip()
+            except Exception:
+                pass
+            reason = {"timer": "定时刷新"}.get(src) or src or "页面手动更新"
             with lock:
                 if state["running"]:
                     return self._json({"ok": False, "msg": "【学习看板】已有更新在进行中"}, 409)
                 state.update(running=True, startedAt=time.strftime("%H:%M:%S"),
                              lastMsg="【学习看板】更新中...", lastOk=None)
                 log_tail.clear()
-            threading.Thread(target=update_job, daemon=True).start()
+            threading.Thread(target=update_job, args=(reason,), daemon=True).start()
             return self._json({"ok": True, "msg": "【学习看板】更新已开始，约7分钟"})
         if self.path.split("?")[0] == "/api/cat_overrides":
             # 页面「移动课程分类」的落盘入口：覆盖记录写入 data/cat_overrides.json，
@@ -189,6 +236,7 @@ def idle_guard():
 
 if __name__ == "__main__":
     touch()
+    _ensure_butler()
     threading.Thread(target=idle_guard, daemon=True).start()
     try:
         ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
