@@ -67,10 +67,10 @@ def plan_cat(p):
 #       白天轮现场算一次并标 approx=1（实时近似，前端会注明）。
 # 口径与前端 app.js empStat/required 完全一致：必修课(3/8)=状态W；
 # 考核(考试4/课题名带「考核」/带分数)=W 且未判否/待阅卷 且(分数≥80 或 平台判「是」)；
-# 上传考核B已交未打分=待审核不算完成；A「上传拼盘实操考核图片」纯动作 W 即完成。
+# 上传考核（fix206 A/B 同权：上传拼盘实操考核图片 与 上传慧运营拼盘考核截图 均真实考核）：
+# 已交未打分=待审核不算完成；已打分按分数≥80（fix203 的 A 纯动作特判已废除）。
 # 仅把统计范围从「全部阶段」收窄为「应完成日期 ≤ asOf 的阶段」（应完成日期推算同 app.js dueDateOf）。
 
-UPLOAD_AUTO_NAME = "上传拼盘实操考核图片"  # A 纯动作（与 app.js 同名常量）
 _CN_D = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 
 
@@ -165,8 +165,8 @@ def _exam_pass_t(t):
         return False
     if is_pass in ("否", "待阅卷"):
         return False
-    if _is_upload_work(t) and name != UPLOAD_AUTO_NAME and _num(score) is None:
-        return False  # 上传考核B：已交未打分 = 待审核 ≠ 完成
+    if _is_upload_work(t) and _num(score) is None:
+        return False  # 上传考核（fix206 A/B 同权）：已交未打分 = 待审核 ≠ 完成
     n = _num(score)
     if n is not None:
         return n >= 80
