@@ -19,3 +19,5 @@ board_butler.py
 
 data/_butler_log.txt
 data/_update_log.txt
+data/_night_snapshot.lock
+data/_snapshot_preview/
