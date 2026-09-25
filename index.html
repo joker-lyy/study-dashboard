@@ -93,7 +93,7 @@ tr.clickable:hover td:first-child{text-decoration:underline}
   <span class="gen" id="genTime"></span>
   <button id="shareViewBtn" onclick="openShareOverlay()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔗 分享本视图</button>
   <button onclick="sharePng()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🖼 分享图片</button>
-  <button id="updateBtn" onclick="manualUpdate()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap">🔄 更新【学习看板】数据</button>
+  <button id="updateBtn" onclick="manualUpdate()" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap;display:none">🔄 更新【学习看板】数据</button>
   <div class="rangebar" id="rangeBar">
     <button data-r="全部" onclick="setRange('全部')">全部</button>
     <button data-r="上月" onclick="setRange('上月')">上月</button>
@@ -188,9 +188,27 @@ function pollStatus() {
   }).catch(() => updFail("更新服务断开了。它会在空闲时自动退出，双击一次「启动看板.vbs」可立即恢复（约 3 秒）"));
 }
 /* 打开页面时顺带探一下服务，提示可用性（不打扰） */
+/* fix220：更新按钮仅本机可用——默认隐藏；先 wake 叫醒服务再探测 8767，可达才显示（最多重试 6 次）。
+   访客电脑没有该服务，按钮保持隐藏：不会误按、也不会弹「连不上本机服务」的报错框 */
+function revealUpdIfLocal(cb) {
+  const b = document.getElementById("updateBtn");
+  if (!b) return;
+  let tries = 0;
+  const probe = () => {
+    fetch(UPD_SVC + "/ping", { cache: "no-store" }).then(r => r.json()).then(j => {
+      if (j && j.ok) { b.style.display = ""; updGuardTick(); if (cb) cb(j); }
+      else retry();
+    }).catch(retry);
+  };
+  const retry = () => {
+    if (++tries >= 6) return;   // 非本机环境：保持隐藏，静默放弃
+    setTimeout(() => { wakeSvc(); probe(); }, 1500);
+  };
+  wakeSvc(); probe();
+}
 window.addEventListener("load", () => {
   updGuardTick();
-  fetch(UPD_SVC + "/ping").then(r => r.json()).then(j => { if (j.ok && j.running) updBtn("⏳ 更新中 " + (j.startedAt || ""), true); }).catch(() => {});
+  revealUpdIfLocal(j => { if (j.running) updBtn("⏳ 更新中 " + (j.startedAt || ""), true); });
 });
 </script>
 <!-- 看板心跳 / 自动切到本机服务版
