@@ -43,9 +43,13 @@ jobs:
         id: slot
         shell: bash
         run: |
+          # 2026-10-02 修复：GitHub 近期调度延迟严重（00:05 档实测拖到 04:44 才开跑），
+          # 旧判定「运行时小时==00」会把延迟开跑的凌晨档误判成白天档 → 成功也静音。
+          # 改为「北京时间 00~09 点开跑即视为凌晨通知档」：白天档(10/13/16/19 点)
+          # 即使延迟数小时，最早也只能 10 点后开跑，不会误报。
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "notify=true" >> "$GITHUB_OUTPUT"
-          elif [ "$(TZ=Asia/Shanghai date +%H)" = "00" ]; then
+          elif [ "$((10#$(TZ=Asia/Shanghai date +%H)))" -lt 10 ]; then
             echo "notify=true" >> "$GITHUB_OUTPUT"
           else
             echo "notify=false" >> "$GITHUB_OUTPUT"
