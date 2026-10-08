@@ -1488,7 +1488,9 @@ function directIndex() {
       plans: pls, pDone, pTotal, pRate: pTotal ? pDone / pTotal * 100 : null,
       maps, mAvg, mDone, mTotal, sRate,
     };
-    (byStore[st] = byStore[st] || []).push(eid);
+    // 多店挂名人员不占门店卡（2026-10-08 用户拍板）：督导等 store 为「店A、店B」拼接串的人
+    // 不按整串单独成「店」，仍计入直营伙伴总数与汇总卡（人数/任务/地图/汇总均不变）
+    if (!st.includes("、")) (byStore[st] = byStore[st] || []).push(eid);
   });
   const emps = Object.keys(prof);
   // 门店排序：人数多的在前
