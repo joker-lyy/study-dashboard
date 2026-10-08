@@ -702,8 +702,13 @@ function aggFilterEmps(p, emps) {
   if (aggFilter === "未完成") return emps.filter(e => !isDone(e));
   return emps;
 }
+// 明细表按门店降序聚拢（Rain 2026-10-08：同门店人员挨在一起方便看；中文 locale 排序）
+function sortByStoreDesc(emps) {
+  return [...emps].sort((a, b) => String(storeOf(b)).localeCompare(String(storeOf(a)), "zh-Hans-CN"));
+}
 // 弹窗正文：按天（阶段）一列展示出勤+分数（区域/组别/门店明细共用）
 function aggDetailTable(p, emps) {
+  emps = sortByStoreDesc(emps);
   // 阶段列表（按计划阶段顺序，去重）；无明细的计划（直播类等）回退完成状态
   const hasDet = p.empDetails && Object.keys(p.empDetails).length > 0;
   const stageNames = [];
