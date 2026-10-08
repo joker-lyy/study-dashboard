@@ -186,6 +186,20 @@ function statEmpsOf(p) {
   const all = (p.emps || []).filter(e => statusOf(e) != null);
   return isFissionPlan(p) ? all.filter(e => !isTestStoreName(fissionStoreOf(p, e))) : all;
 }
+// 裂变门店口径（2026-10-08 Rain 拍板）：平台 overview 的 shouldTrainStoreCount/trainedStoreCount
+// 把学员名下全部挂店都算进去（黄载均挂3店→应学门店6/已参训门店3），与飞书名单口径不符。
+// → 按统计口径学员的归属门店去重数=应学门店；其中任一学员有学习进度(done>0)的门店数=已参训门店。
+function fissionStoreStat(p) {
+  const sm = new Map();
+  statEmpsOf(p).forEach(e => {
+    const sn = fissionStoreOf(p, e);
+    if (!sn) return;
+    if (!sm.has(sn)) sm.set(sn, false);
+    const st = empStat(p, e);
+    if (st && st.done > 0) sm.set(sn, true);
+  });
+  return { should: sm.size, trained: [...sm.values()].filter(Boolean).length };
+}
 function hydrateFissionMap() {
   fetch("data/fission_feishu_map.json?t=" + Date.now()).then(r => r.ok ? r.json() : null).then(m => {
     if (m && m.map) {
@@ -371,7 +385,8 @@ function renderMulti(plans, gnav) {
         if (t[2] === "W" && t[3] != null && t[3] !== "-" && !isNaN(+t[3])) { esum += +t[3]; en++; }
       }));
     });
-    return { i, p, ov, emps: (p.emps || []).length, T, D, rate: T ? D / T * 100 : null, esum, en, should: ov.shouldTrainStoreCount || 0, trained: ov.trainedStoreCount || 0 };
+    const fsSt = isFissionPlan(p) ? fissionStoreStat(p) : null; // 裂变门店口径按飞书归属，不用平台数
+    return { i, p, ov, emps: (p.emps || []).length, T, D, rate: T ? D / T * 100 : null, esum, en, should: fsSt ? fsSt.should : (ov.shouldTrainStoreCount || 0), trained: fsSt ? fsSt.trained : (ov.trainedStoreCount || 0) };
   });
   const c = rows.filter(r => chosen.includes(r.i));
   const S = a => a.reduce((x, y) => x + y, 0);
@@ -575,15 +590,22 @@ function renderCat() {
   // 裂变板块（2026-10-08）：应学/已完成按统计口径人数（不含测试门店学员），不用平台overview数
   const cardTotal = isFissionPlan(p) ? statEmps.length : (ov.numberOfPersonsDueToComplete ?? (p.emps || []).length);
   const cardDone = isFissionPlan(p) ? statEmps.filter(e => { const s = empStat(p, e); return s ? s.status === 2 : statusOf(e) === 2; }).length : ov.numberOfPeopleCompleted;
+  // 裂变门店三卡：平台把学员名下全部挂店都算进去（黄载均→应学6/已参训3），按飞书归属重算；其他板块不变
+  const fsSt = isFissionPlan(p) ? fissionStoreStat(p) : null;
+  const cardStores = fsSt ? fsSt.should : (ov.shouldTrainStoreCount ?? (p.storeStats || []).length);
+  const cardTrained = fsSt ? fsSt.trained : (ov.trainedStoreCount ?? "-");
+  const cardPart = fsSt
+    ? (fsSt.should ? (fsSt.trained / fsSt.should * 100).toFixed(1) : "-")
+    : (ov.shouldTrainStoreCount ? ((ov.trainedStoreCount || 0) / ov.shouldTrainStoreCount * 100).toFixed(1) : "-");
   const cards = `
     <div class="cards">
       <div class="card"><div class="k">应学人数</div><div class="v">${cardTotal}</div></div>
       <div class="card"><div class="k">已完成</div><div class="v">${cardDone}</div></div>
       <div class="card"><div class="k">完成率</div><div class="v">${(cardRate || 0).toFixed(1)}<small>%</small></div></div>
       <div class="card"><div class="k">考试平均分</div><div class="v">${examAvg ?? "-"}</div></div>
-      <div class="card"><div class="k">应学门店</div><div class="v">${ov.shouldTrainStoreCount ?? (p.storeStats || []).length}</div></div>
-      <div class="card"><div class="k">已参训门店</div><div class="v">${ov.trainedStoreCount ?? "-"}</div></div>
-      <div class="card"><div class="k">参与率</div><div class="v">${ov.shouldTrainStoreCount ? ((ov.trainedStoreCount || 0) / ov.shouldTrainStoreCount * 100).toFixed(1) : "-"}<small>%</small></div></div>
+      <div class="card"><div class="k">应学门店</div><div class="v">${cardStores}</div></div>
+      <div class="card"><div class="k">已参训门店</div><div class="v">${cardTrained}</div></div>
+      <div class="card"><div class="k">参与率</div><div class="v">${cardPart}<small>%</small></div></div>
       ${timeCard}
     </div>`;
 
