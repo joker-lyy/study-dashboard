@@ -280,7 +280,23 @@ function dateInrange(dateStr) {
   if (to && d > to) return false;
   return true;
 }
-function plansInRange(cat, gOverride) { return plansOf(cat, gOverride).filter(p => dateInrange(p.startDate)); }
+/* 计划入时段（2026-10-08 用户拍板）：按「计划起止区间与所选时段有交集」判定——
+   跨月培训（如裂变 9/24~10/13）在它跨到的每个月都可见，不再因开始日期在上月而被「本月」过滤掉。
+   单点时间（评价提交、问卷）仍用 dateInrange 按点判定 */
+function planInrange(p) {
+  if (state.range === "全部") return true;
+  const s = String(p.startDate || "").slice(0, 10);
+  if (!s) return false;
+  const e = String(p.endDate || "").slice(0, 10) || s;
+  let from, to;
+  if (state.range === "本月") [from, to] = monthRange(0);
+  else if (state.range === "上月") [from, to] = monthRange(-1);
+  else { from = state.rFrom; to = state.rTo; if (!from && !to) return true; }
+  if (from && e < from) return false; // 时段开始前计划已结束
+  if (to && s > to) return false;     // 时段结束后计划才开始
+  return true;
+}
+function plansInRange(cat, gOverride) { return plansOf(cat, gOverride).filter(planInrange); }
 
 // 默认状态校准：高亮按钮与 state.range 一致，日期输入预填「本月1日 ~ 今天」
 // fix：此前 HTML 把 active 写死在「全部」，而 state.range 默认「本月」，色块与实际数据口径对不上造成误会
