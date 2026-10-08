@@ -151,7 +151,50 @@ function orgParts(emp) {
 }
 function regionOf(emp) { const p = orgParts(emp); return p[p.length - 1] || "未分配"; }
 function groupOf(emp) { const p = orgParts(emp); return p.length >= 2 ? p[p.length - 2] : "未分配"; }
-function storeOf(emp) { return emp.storeNames || "无门店"; }
+
+/* ---------- 裂变培训口径（2026-10-08 用户拍板） ---------- */
+// ① 学员门店归属：以飞书「免训不免考跟进（饼干）」按加盟客户姓名登记的门店名为准
+//   （映射由每晚 22:20 夜间快照查飞书后落盘 data/fission_feishu_map.json，随数据更新入库）；
+//   查不到 → 多店挂名回退「名下平台门店中开业最晚」（与夜间报表同规则），单店原样。
+//   如黄载均名下 3 店，明细里只显示归属店「厦门思明五一广场店」，其余已训门店不多此一举列出。
+// ② 门店名含「测试」的（如测试门店（直营））：可以展示，但不计入任何统计（人数/汇总/完成率）。
+let FISSION_CAT = "裂变加盟商培训";
+let FISSION_MAP = {};
+let CUR_PLAN = null; // renderCat 里更新，供 storeOf 的裂变归属使用
+function isFissionPlan(p) { return !!p && effCat(p) === FISSION_CAT; }
+function isTestStoreName(s) { return /测试/.test(String(s || "")); }
+function fissionStoreOf(p, e) {
+  const name = String(e.empName || "").trim();
+  if (FISSION_MAP[name]) return FISSION_MAP[name];
+  const names = String(e.storeNames || "").split(/[、,，;；]/).map(s => s.trim()).filter(Boolean);
+  if (names.length <= 1) return names[0] || "";
+  const open = {};
+  (p.storeStats || []).forEach(s => open[s.storeName] = String(s.storeOpeningTime || ""));
+  let best = names[0];
+  for (const n of names) { const a = open[n] || "", b = open[best] || ""; if (a && (!b || a > b)) best = n; }
+  return best;
+}
+function storeOf(emp) {
+  if (CUR_PLAN && isFissionPlan(CUR_PLAN)) {
+    const fs = fissionStoreOf(CUR_PLAN, emp);
+    if (fs) return fs;
+  }
+  return emp.storeNames || "无门店";
+}
+// 统计口径学员（裂变剔除测试门店学员；其他板块=在职学员，行为不变）
+function statEmpsOf(p) {
+  const all = (p.emps || []).filter(e => statusOf(e) != null);
+  return isFissionPlan(p) ? all.filter(e => !isTestStoreName(fissionStoreOf(p, e))) : all;
+}
+function hydrateFissionMap() {
+  fetch("data/fission_feishu_map.json?t=" + Date.now()).then(r => r.ok ? r.json() : null).then(m => {
+    if (m && m.map) {
+      const changed = JSON.stringify(m.map) !== JSON.stringify(FISSION_MAP);
+      FISSION_MAP = m.map;
+      if (changed && typeof DATA !== "undefined") render();
+    }
+  }).catch(() => {});
+}
 function uniqSort(a) { return [...new Set(a)].sort(); }
 
 function statusOf(emp) {
@@ -160,9 +203,10 @@ function statusOf(emp) {
 }
 
 // 计划内按 key 聚合学员（状态以员工明细 done/total 为准，trainingStatus 不可靠）
+// 裂变板块：测试门店学员不计入统计（2026-10-08 用户拍板，statEmpsOf 统一口径）
 function aggregate(plan, keyFn) {
   const map = {};
-  (plan.emps || []).forEach(e => {
+  statEmpsOf(plan).forEach(e => {
     const st = statusOf(e);
     if (st == null) return;
     const s = empStat(plan, e);
@@ -443,7 +487,7 @@ function renderOverview() {
   const catCards = CORE_CATS.map(cat => {
     const plans = plansInRange(cat);
     let emps = 0, done = 0, tT = 0, tD = 0, hasT = false;
-    plans.forEach(p => (p.emps || []).forEach(e => {
+    plans.forEach(p => statEmpsOf(p).forEach(e => {
       if (statusOf(e) == null) return;
       const st = empStat(p, e);
       if (st && st.total) { hasT = true; tT += st.total; tD += st.done; }
@@ -489,6 +533,8 @@ function renderCat() {
   if (state.multi) { renderMulti(plans, gnav); return; }
   state.planIdx = Math.min(state.planIdx, plans.length - 1);
   const p = plans[state.planIdx];
+  CUR_PLAN = p; // 供 storeOf 裂变归属使用（弹窗/表格门店列统一口径）
+  const statEmps = statEmpsOf(p); // 裂变=剔除测试门店学员后的统计口径；其他板块=在职学员
 
   const opts = plans.map((x, i) => `<option value="${i}" ${i === state.planIdx ? "selected" : ""}>${esc(x.planName)}（${x.startDate || "?"}）</option>`).join("");
   const multiBox = `<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap"><input type="checkbox" onchange="state.multi=this.checked;state.multiSel=[];renderCat()"> 多选汇总</label>`;
@@ -509,7 +555,7 @@ function renderCat() {
   let cardRate = 0;
   {
     let tT = 0, tD = 0, hasT = false;
-    (p.emps || []).forEach(e => { if (statusOf(e) == null) return; const st = empStat(p, e); if (st && st.total) { hasT = true; tT += st.total; tD += st.done; } });
+    statEmps.forEach(e => { if (statusOf(e) == null) return; const st = empStat(p, e); if (st && st.total) { hasT = true; tT += st.total; tD += st.done; } });
     if (hasT && tT) cardRate = tD / tT * 100;
     else cardRate = pct(ov.percentageComplete) || 0;
   }
@@ -517,7 +563,7 @@ function renderCat() {
   let examAvg = null;
   {
     let sum = 0, n = 0;
-    (p.emps || []).forEach(e => {
+    statEmps.forEach(e => {
       const det = p.empDetails && p.empDetails[String(e.employeeId)];
       if (!det) return;
       (det.stages || []).forEach(sg => (sg.t || []).forEach(t => {
@@ -526,10 +572,13 @@ function renderCat() {
     });
     examAvg = n ? (sum / n).toFixed(1) : null;
   }
+  // 裂变板块（2026-10-08）：应学/已完成按统计口径人数（不含测试门店学员），不用平台overview数
+  const cardTotal = isFissionPlan(p) ? statEmps.length : (ov.numberOfPersonsDueToComplete ?? (p.emps || []).length);
+  const cardDone = isFissionPlan(p) ? statEmps.filter(e => { const s = empStat(p, e); return s ? s.status === 2 : statusOf(e) === 2; }).length : ov.numberOfPeopleCompleted;
   const cards = `
     <div class="cards">
-      <div class="card"><div class="k">应学人数</div><div class="v">${ov.numberOfPersonsDueToComplete ?? (p.emps || []).length}</div></div>
-      <div class="card"><div class="k">已完成</div><div class="v">${ov.numberOfPeopleCompleted ?? "-"}</div></div>
+      <div class="card"><div class="k">应学人数</div><div class="v">${cardTotal}</div></div>
+      <div class="card"><div class="k">已完成</div><div class="v">${cardDone}</div></div>
       <div class="card"><div class="k">完成率</div><div class="v">${(cardRate || 0).toFixed(1)}<small>%</small></div></div>
       <div class="card"><div class="k">考试平均分</div><div class="v">${examAvg ?? "-"}</div></div>
       <div class="card"><div class="k">应学门店</div><div class="v">${ov.shouldTrainStoreCount ?? (p.storeStats || []).length}</div></div>
@@ -544,8 +593,7 @@ function renderCat() {
   const stageRows = (p.stageStats || []).filter(s => isStageDue(p, s.phaseName)).map((s, i) => {
     const key = s.phaseName;
     let todo = 0, doing = 0, doneN = 0, rT = 0, rD = 0, nDet = 0;
-    (p.emps || []).forEach(e => {
-      if (statusOf(e) == null) return;
+    statEmps.forEach(e => {
       const r = stageRequired(p, e, key);
       if (!r.hasEmp) return;              // 该学员无明细 → 退回平台数
       nDet++;
@@ -557,8 +605,10 @@ function renderCat() {
     });
     let sRate = pct(s.phaseCompletionRate);
     let todoC = s.uninitiatedNumber, doingC = s.numberOfPeopleInProgress, doneC = s.numberOfPeopleCompleted;
-    if (nDet && rT) { todoC = todo; doingC = doing; doneC = doneN; sRate = rD / rT * 100; }
-    return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td style="white-space:nowrap;color:${dueDateOf(p, key) ? "var(--t1)" : "var(--t2)"}">${dueDateOf(p, key) || "—"}</td><td>${s.numberOfPersonsDueToComplete}</td><td>${todoC}</td><td>${doingC}</td><td>${doneC}</td><td>${barHtml(sRate)}</td></tr>`;
+    // 裂变板块：应完成=统计口径人数（不含测试门店学员，2026-10-08），人数重算不依赖平台虚数
+    const dueC = isFissionPlan(p) ? statEmps.length : s.numberOfPersonsDueToComplete;
+    if (nDet && (rT || isFissionPlan(p))) { todoC = todo; doingC = doing; doneC = doneN; sRate = rT ? rD / rT * 100 : 0; }
+    return `<tr class="clickable" onclick="openStage('${esc(key).replace(/'/g, "")}')"><td>${esc(s.phaseName)}</td><td style="white-space:nowrap;color:${dueDateOf(p, key) ? "var(--t1)" : "var(--t2)"}">${dueDateOf(p, key) || "—"}</td><td>${dueC}</td><td>${todoC}</td><td>${doingC}</td><td>${doneC}</td><td>${barHtml(sRate)}</td></tr>`;
   }).join("");
 
   // 二级
@@ -579,7 +629,7 @@ function renderCat() {
       <select onchange="state.planIdx=+this.value;renderCat()">${opts}</select>
       ${multiBox}
       ${mvSel}
-      <span class="badge b-gray">学员 ${(p.emps || []).length} 人</span>
+      <span class="badge b-gray">学员 ${isFissionPlan(p) ? statEmps.length : (p.emps || []).length} 人${isFissionPlan(p) && (p.emps || []).length !== statEmps.length ? `（测试 ${(p.emps || []).length - statEmps.length} 人不计）` : ""}</span>
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}
     </div>
     ${cards}
@@ -751,7 +801,7 @@ function storeRankTable(p) {
   //   防止白天补做把"昨天该完成的"虚增造成偏差；无冻结数据时显示 —（等下次凌晨同步）
   // · 总学习进度 = 全部任务实时完成进度（empStat 口径），随每次数据同步实时更新
   const fz = p.frozen && p.frozen.asOf ? p.frozen : null;
-  const rows = (p.storeStats || []).map(s => {
+  let rows = (p.storeStats || []).map(s => {
     const emps = (p.emps || []).filter(e => storeOf(e) === s.storeName && statusOf(e) != null);
     let fDone = 0, fTotal = 0, done = 0, total = 0;
     emps.forEach(e => {
@@ -765,6 +815,28 @@ function storeRankTable(p) {
     const link = (s.organizeLink || "").split("/").filter(Boolean);
     return { s, stageRate, rate, empN: emps.length, region: link[link.length - 1] || "" };
   }).sort((a, b) => (b.stageRate == null ? -1 : b.stageRate) - (a.stageRate == null ? -1 : a.stageRate) || b.rate - a.rate);
+  // 裂变板块（2026-10-08 用户拍板）：
+  // · 只显示「有归属学员」的门店——黄载均名下已训门店（米兰公馆/宏达路）不再多此一举列出；
+  // · 飞书登记门店若不在平台 storeStats（未开业）也补一行，数据按归属学员实时计算；
+  // · 测试门店可以展示（行保留），但标注「不计统计」，且不参与人数/汇总类统计。
+  if (isFissionPlan(p)) {
+    const have = new Set(rows.map(r => r.s.storeName));
+    statEmpsOf(p).forEach(e => {
+      const fs = fissionStoreOf(p, e);
+      if (!fs || isTestStoreName(fs) || have.has(fs)) return;
+      have.add(fs);
+      const fe = fz && fz.emps && fz.emps[String(e.employeeId)];
+      const st2 = empStat(p, e);
+      rows.push({
+        s: { storeName: fs, storeId: fs, storeStudyStatus: "已参训" },
+        stageRate: fe && fe[1] ? fe[0] / fe[1] * 100 : null,
+        rate: st2 && st2.total ? st2.done / st2.total * 100 : null,
+        empN: 1, region: "",
+      });
+    });
+    rows = rows.filter(r => r.empN > 0 || isTestStoreName(r.s.storeName));
+    rows.sort((a, b) => (b.stageRate == null ? -1 : b.stageRate) - (a.stageRate == null ? -1 : a.stageRate) || b.rate - a.rate);
+  }
   const kw = (state.storeSearch || "").trim().toLowerCase();
   const shown = kw ? rows.filter(r => (r.s.storeName || "").toLowerCase().includes(kw) || (r.region || "").toLowerCase().includes(kw)) : rows;
   if (!rows.length) return `<div class="empty">暂无门店数据</div>`;
@@ -774,7 +846,7 @@ function storeRankTable(p) {
   </div>
   <table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th title="${fz ? `截至 ${fz.asOf} 23:59：已完成（需合格）任务 ÷ 应完成任务（凌晨同步冻结，白天不刷新）` : "冻结统计未生成，待下次凌晨同步"}">当前阶段完成情况</th><th title="全部任务实时完成进度（随每次数据同步更新）">总学习进度</th><th>状态</th><th style="width:90px">操作</th></tr>
     ${shown.map((r, i) => `<tr>
-      <td>${i + 1}</td><td style="white-space:nowrap">${esc(r.s.storeName)}</td>
+      <td>${i + 1}</td><td style="white-space:nowrap">${esc(r.s.storeName)}${isFissionPlan(p) && isTestStoreName(r.s.storeName) ? ` <span class="badge b-gray" title="测试门店：仅展示，不计入学员人数/汇总/完成率等统计">测试 · 不计统计</span>` : ""}</td>
       <td style="color:var(--t2)">${esc(r.region)}</td>
       <td style="text-align:center">${r.empN}</td>
       <td>${r.stageRate == null ? `<span style="color:var(--t2)">—</span>` : barHtml(r.stageRate, true)}</td>
@@ -921,7 +993,9 @@ function openStore(storeId) {
   const plans = plansInRange(state.cat);
   const p = plans[state.planIdx];
   const st = (p.storeStats || []).find(s => String(s.storeId) === String(storeId));
-  let emps = (p.emps || []).filter(e => storeOf(e) === (st && st.storeName) && statusOf(e) != null);
+  // 裂变：飞书登记门店可能不在平台 storeStats（排行行为补行，storeId 即门店名），按名匹配
+  const target = st ? st.storeName : String(storeId);
+  let emps = (p.emps || []).filter(e => storeOf(e) === target && statusOf(e) != null);
   emps = aggFilterEmps(p, emps);
   aggReopen = () => openStore(storeId);
   window.__aggShare = { kind: "store", storeId: String(storeId) };
@@ -1775,6 +1849,7 @@ function renderDirectEmpModal() {
 
 /* ---------- 主渲染 ---------- */
 function render() {
+  CUR_PLAN = null; // 每次重渲染先清空，renderCat 里按当前计划重设（裂变归属用）
   // 隐藏平台上还没有数据的分类（学员/门店全空，如"裂变加盟商培训"配置好后会自动出现）
   const visibleCats = DATA.categories.filter(c => {
     const ps = (DATA.plans || []).filter(p => p.category === c);
@@ -1817,6 +1892,7 @@ fetch("data/data.json?v=" + Date.now()).then(r => r.json()).then(d => {
   render();
   if (typeof applyShareView === "function") applyShareView();
   hydrateCatOv(); // 拉取落盘的分类覆盖，防止 localStorage 被清/换源后丢失
+  hydrateFissionMap(); // 拉取飞书「免训不免考跟进」姓名→门店映射（裂变归属，每晚快照刷新）
 }).catch(e => {
   document.getElementById("main").innerHTML = `<div class="sec empty">数据加载失败：${esc(e)}<br>请先运行 fetch_study.py，并用「启动看板.bat」打开</div>`;
 });
