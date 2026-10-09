@@ -1290,7 +1290,7 @@ function renderLectureEval() {
     const list = byStore[s];
     return `<tr><td style="vertical-align:top"><b>${esc(s)}</b></td><td>${list.map(v => `
       <div class="eval-card">
-        <div style="font-size:12px;color:var(--t2);margin-bottom:6px">${new Date(v.time).toLocaleString("zh-CN")} · 授课老师：${esc(v.by) || "-"}${v.course ? ` · 课程：${esc(v.course)}` : ""}</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:6px">${new Date(v.time).toLocaleString("zh-CN").replace(/:\d{2}$/, "")} · 授课老师：${esc(v.by) || "-"}${v.course ? ` · 课程：${esc(v.course)}` : ""}</div>
         ${modBadge("理论", v.th)}${modBadge("技术", v.tech)}${modBadge("实操", v.prac) || (!v.th && !v.tech && !v.prac ? '<i style="color:var(--t2);font-size:12px">（无文字评价）</i>' : "")}
       </div>`).join("")}</td></tr>`;
   }).join("") || `<tr><td class="empty" colspan="2">暂无授课老师提交评价</td></tr>`;
@@ -1950,7 +1950,7 @@ function render() {
 
 fetch("data/data.json?v=" + Date.now()).then(r => r.json()).then(d => {
   DATA = d;
-  document.getElementById("genTime").textContent = "数据更新于 " + d.generatedAt;
+  document.getElementById("genTime").textContent = "数据更新于 " + String(d.generatedAt || "").slice(0, 16);  // 时:分即可，不显示秒
   render();
   if (typeof applyShareView === "function") applyShareView();
   hydrateCatOv(); // 拉取落盘的分类覆盖，防止 localStorage 被清/换源后丢失
