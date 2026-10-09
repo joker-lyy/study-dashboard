@@ -712,6 +712,14 @@ function signTimeOf(sts) {
   const t = (sts || []).find(x => x[1] === 3 && x[5] && x[5] !== "-") || (sts || []).find(x => x[5] && x[5] !== "-");
   return t ? String(t[5]).slice(11, 16) : "";
 }
+// 平台真实考勤（faceCourseDetail，fetch 层并入 p.att）：att[employeeId][阶段名]=[sign,leave]
+// sign: yqd=已签到 / wqd=未签到；leave: "请假" / ""。无记录返回 null（按任务完成时间回退推断）
+function attRecOf(p, e, sn) {
+  const a = p.att && p.att[String(e.employeeId)];
+  return a ? (a[sn] || null) : null;
+}
+function isSignedRec(rec) { return !!rec && rec[0] === "yqd"; }
+function isLeaveRec(rec) { return !!rec && !!rec[1] && rec[1] !== "-" && rec[0] !== "yqd"; }  // 平台非请假行 leave="-"
 // 弹窗正文：按天（阶段）一列展示出勤+分数（区域/组别/门店明细共用）
 function aggDetailTable(p, emps) {
   emps = sortByStoreDesc(emps);
@@ -739,9 +747,12 @@ function aggDetailTable(p, emps) {
     const ts = planTasks(p, e);
     const stat = empStat(p, e);
     const det = p.empDetails && p.empDetails[String(e.employeeId)];
-    // 出勤 = 实际出勤(已签到且未请假天数) / 应出勤(周期内已开始天数，即 stageNames.length，未来天不计；请假不计出勤)
+    // 出勤 = 实际出勤 / 应出勤（周期内已开始天数；请假不计出勤）
+    // 平台真实考勤优先（attRecOf）：已签到才算出勤；无考勤记录的阶段回退任务完成时间推断
     const attCnt = stageNames.filter(sn => {
-      if (leaveOf(sn, e)) return false;
+      if (leaveOf(sn, e)) return false;              // 手工请假名单不计出勤
+      const rec = attRecOf(p, e, sn);
+      if (rec) return isSignedRec(rec);              // 平台考勤：已签到才计
       const stg = det && (det.stages || []).find(s => (s.n || "") === sn);
       return stg && (stg.t || []).some(t => t[5] && t[5] !== "-");
     }).length;
@@ -749,12 +760,16 @@ function aggDetailTable(p, emps) {
     const dayCells = stageNames.map(sn => {
       const stg = det && (det.stages || []).find(s => (s.n || "") === sn);
       const sts = stg ? (stg.t || []) : [];
-      // 出勤：请假 > 已签到（显示签到时间 HH:MM）> 未签到（紧凑文字样式）
+      // 出勤：请假（手工名单/平台记录）> 已签到（平台考勤，显示签到时间）> 未签到；无考勤记录回退任务完成推断
       let att = `<span style="font-size:11px;font-weight:600;color:var(--orange)">未签到</span>`;
       if (leaveOf(sn, e)) att = `<span style="font-size:11px;color:var(--t2)">请假</span>`;
       else {
+        const rec = attRecOf(p, e, sn);
         const sigT = signTimeOf(sts);
-        if (sigT) att = `<span style="font-size:11px;font-weight:600;color:var(--green)">已签到</span> <span style="font-size:11px;color:var(--t2)">${sigT}</span>`;
+        if (isLeaveRec(rec)) att = `<span style="font-size:11px;font-weight:600;color:var(--t2)">请假</span>`;
+        else if (isSignedRec(rec)) att = `<span style="font-size:11px;font-weight:600;color:var(--green)">已签到</span>${sigT ? ` <span style="font-size:11px;color:var(--t2)">${sigT}</span>` : ""}`;
+        else if (rec) att = `<span style="font-size:11px;font-weight:600;color:var(--orange)">未签到</span>`;
+        else if (sigT) att = `<span style="font-size:11px;font-weight:600;color:var(--green)">已签到</span> <span style="font-size:11px;color:var(--t2)">${sigT}</span>`;
       }
       // 分数：该天全部考核，多科/隔开；未考=有考试未完成；—=无考试；红=未达80
       const exams = sts.filter(isExamT);
@@ -953,10 +968,18 @@ function renderStageModal() {
   if (state.dStatus === "未完成") emps = emps.filter(e => !stageDone(e));
   const regions = uniqSort(emps.map(e => mGroup(e).r));
   const boxes = (kind, set, opts) => opts.map(o => `<label style="margin:0 10px 0 0;white-space:nowrap;cursor:pointer"><input type="checkbox" ${set[o] ? "checked" : ""} onclick="toggleDFilter('${kind}','${esc(o)}',this)" style="vertical-align:-2px"> ${esc(o)}</label>`).join("");
-  // 出勤：请假（data/leave.json 手工名单）> 已签到（显示签到时间 HH:MM）> 未签到
+  // 出勤：请假（data/leave.json 手工名单）> 平台考勤（请假/已签到+时间/未签到）> 未签到（按任务完成时间回退）
   const attOf = e => {
     const lv = p.leaves && p.leaves[stageName];
     if (lv && (lv.includes(String(e.employeeId)) || lv.includes(e.empName))) return ["请假", "b-gray"];
+    const rec = attRecOf(p, e, stageName);
+    if (isLeaveRec(rec)) return ["请假", "b-gray"];
+    if (rec) {
+      if (!isSignedRec(rec)) return ["未签到", "b-orange"];
+      const stg0 = stageOf(e);
+      const tm = stg0 ? signTimeOf(stg0.t) : "";
+      return [tm ? `已签到 ${tm}` : "已签到", "b-green"];
+    }
     const stg = stageOf(e);
     if (stg) {
       const tm = signTimeOf(stg.t);
@@ -1009,7 +1032,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=该阶段有任务完成记录（已签到），请假以培训部登记为准；分数为当天全部考核成绩（多科以 / 隔开），<b>未考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷/待审核 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b>「上传拼盘实操考核图片」与「上传慧运营的拼盘学习工具考核截图」同权（fix206）：均为真实考核（老师打分）——未上传=未完成、已上传未打分=待审核（黄）、已打分=已完成（N分，&lt;80 ✗ 未通过）。<b>所有考核打分 &lt;80 分一律显示 ✗ 未通过（红）并计入未完成。</b></div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=平台面授签到记录（已签到/未签到/请假按慧运营后台实际考勤显示，2026-10-09 起；已签到旁的时间为该课任务完成时间），请假=平台考勤登记或培训部手工名单，请假当天不计出勤；分数为当天全部考核成绩（多科以 / 隔开），<b>未考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷/待审核 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b>「上传拼盘实操考核图片」与「上传慧运营的拼盘学习工具考核截图」同权（fix206）：均为真实考核（老师打分）——未上传=未完成、已上传未打分=待审核（黄）、已打分=已完成（N分，&lt;80 ✗ 未通过）。<b>所有考核打分 &lt;80 分一律显示 ✗ 未通过（红）并计入未完成。</b></div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>

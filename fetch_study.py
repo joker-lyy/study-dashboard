@@ -486,6 +486,29 @@ def fetch_plan_detail(tok, plan):
     n_missing = len(emps) - len(results)
     if n_missing:
         print(f"  [警告] {plan['planName']} 有 {n_missing} 名员工明细抓取失败")
+
+    # 平台真实考勤（面授签到记录）：signStatusStr yqd=已签到/wqd=未签到，
+    # leaveStatusStr=请假（2026-10-09 Rain 要求按后台实际出勤显示，替代手工 leave.json 猜测）。
+    # 结构 att[employeeId][阶段名] = [sign, leave]；只有面授课有行，无行阶段前端按任务完成时间回退推断。
+    att, page = {}, 1
+    while True:
+        d, err = call(tok, "/web/train/report/faceCourseDetail?version=1",
+                      {"planId": pid, "pageNumber": page, "pageSize": 100})
+        if err or not d:
+            print(f"  [考勤拉取失败] {plan['planName']} 第{page}页: {err}")
+            break
+        for r in d.get("list", []):
+            eid = str(r.get("employeeId") or "")
+            stg = r.get("subordinateStage") or ""
+            if eid and stg:
+                att.setdefault(eid, {})[stg] = [r.get("signStatusStr") or "",
+                                                (r.get("leaveStatusStr") or "").strip()]
+        if d.get("lastPage") or page >= 30:
+            break
+        page += 1
+    if att:
+        out["att"] = att
+        print(f"  考勤记录 {sum(len(v) for v in att.values())} 条")
     return out
 
 def fetch_maps(tok):
