@@ -706,6 +706,12 @@ function aggFilterEmps(p, emps) {
 function sortByStoreDesc(emps) {
   return [...emps].sort((a, b) => String(storeOf(b)).localeCompare(String(storeOf(a)), "zh-Hans-CN"));
 }
+// 签到时间（Rain 2026-10-09）：面授/签到(type 3)任务的完成时间即签到时间，取 HH:MM；
+// 该阶段无签到类任务时回退当天首个完成时间（=开始学习的时刻）
+function signTimeOf(sts) {
+  const t = (sts || []).find(x => x[1] === 3 && x[5] && x[5] !== "-") || (sts || []).find(x => x[5] && x[5] !== "-");
+  return t ? String(t[5]).slice(11, 16) : "";
+}
 // 弹窗正文：按天（阶段）一列展示出勤+分数（区域/组别/门店明细共用）
 function aggDetailTable(p, emps) {
   emps = sortByStoreDesc(emps);
@@ -743,10 +749,13 @@ function aggDetailTable(p, emps) {
     const dayCells = stageNames.map(sn => {
       const stg = det && (det.stages || []).find(s => (s.n || "") === sn);
       const sts = stg ? (stg.t || []) : [];
-      // 出勤：请假 > 已签到（有任务完成记录）> 未签到（紧凑文字样式）
+      // 出勤：请假 > 已签到（显示签到时间 HH:MM）> 未签到（紧凑文字样式）
       let att = `<span style="font-size:11px;font-weight:600;color:var(--orange)">未签到</span>`;
       if (leaveOf(sn, e)) att = `<span style="font-size:11px;color:var(--t2)">请假</span>`;
-      else if (sts.some(t => t[5] && t[5] !== "-")) att = `<span style="font-size:11px;font-weight:600;color:var(--green)">已签到</span>`;
+      else {
+        const sigT = signTimeOf(sts);
+        if (sigT) att = `<span style="font-size:11px;font-weight:600;color:var(--green)">已签到</span> <span style="font-size:11px;color:var(--t2)">${sigT}</span>`;
+      }
       // 分数：该天全部考核，多科/隔开；未考=有考试未完成；—=无考试；红=未达80
       const exams = sts.filter(isExamT);
       // 必修课=网课(3)+实操课(8)：实操视频课（手握饭团等）同为强制学习，按必修口径统计
@@ -944,12 +953,15 @@ function renderStageModal() {
   if (state.dStatus === "未完成") emps = emps.filter(e => !stageDone(e));
   const regions = uniqSort(emps.map(e => mGroup(e).r));
   const boxes = (kind, set, opts) => opts.map(o => `<label style="margin:0 10px 0 0;white-space:nowrap;cursor:pointer"><input type="checkbox" ${set[o] ? "checked" : ""} onclick="toggleDFilter('${kind}','${esc(o)}',this)" style="vertical-align:-2px"> ${esc(o)}</label>`).join("");
-  // 出勤：请假（data/leave.json 手工名单）> 已签到（该阶段有任务完成记录）> 未签到
+  // 出勤：请假（data/leave.json 手工名单）> 已签到（显示签到时间 HH:MM）> 未签到
   const attOf = e => {
     const lv = p.leaves && p.leaves[stageName];
     if (lv && (lv.includes(String(e.employeeId)) || lv.includes(e.empName))) return ["请假", "b-gray"];
     const stg = stageOf(e);
-    if (stg && (stg.t || []).some(t => t[5] && t[5] !== "-")) return ["已签到", "b-green"];
+    if (stg) {
+      const tm = signTimeOf(stg.t);
+      if (tm) return [`已签到 ${tm}`, "b-green"];
+    }
     return ["未签到", "b-orange"];
   };
   const rows = emps.map(e => {
