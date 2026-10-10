@@ -113,9 +113,58 @@ def _cn_day_num(s):
     return n
 
 
+def _plan_sdm(plan):
+    """排课模板自动鉴别（fix112，镜像 app.js stageDayMapOf）：
+    seq=一天一阶段（顺序即全局天序）；ampm=一天上下午两阶段（阶段名「第N天」即全局天）。
+    有重复天号时用 empDetails 任务完成时间交叉验证择优；无完成数据默认 ampm（近年新模板）。"""
+    from datetime import datetime, timedelta
+    pid = str(plan.get("planId") or plan.get("planName") or "")
+    if pid in _SDM_CACHE:
+        return _SDM_CACHE[pid]
+    ss = plan.get("stageStats") or []
+    names = [(x.get("phaseName") or "") for x in ss]
+    days = [_cn_day_num(n) for n in names]
+    cnt = {}
+    for d in days:
+        if d is not None:
+            cnt[d] = cnt.get(d, 0) + 1
+    seq = {n: i + 1 for i, n in enumerate(names)}
+    m = seq
+    if any(c > 1 for c in cnt.values()) and plan.get("startDate"):
+        ampm = {n: (days[i] if days[i] is not None else i + 1) for i, n in enumerate(names)}
+
+        def _score(mp):
+            try:
+                base = datetime.strptime(str(plan["startDate"])[:10], "%Y-%m-%d").date()
+            except ValueError:
+                return -1.0
+            hit = tot = 0
+            for det in (plan.get("empDetails") or {}).values():
+                for s in (det or {}).get("stages", []):
+                    d = mp.get(s.get("n") or "")
+                    if d is None:
+                        continue
+                    expect = (base + timedelta(days=d - 1)).isoformat()
+                    for t in s.get("t", []):
+                        c = str(t[5] or "")
+                        if len(c) >= 10 and c[4] == "-" and c[7] == "-":
+                            tot += 1
+                            if c[:10] == expect:
+                                hit += 1
+            return (hit / tot) if tot else -1.0
+
+        m = ampm if _score(ampm) >= _score(seq) else seq
+    _SDM_CACHE[pid] = m
+    return m
+
+
+_SDM_CACHE = {}
+
+
 def _due_date(plan, stage_name):
-    """镜像 app.js dueDateOf：startDate + 阶段在 stageStats 的序号天；
-    序号找不到退回阶段名「第N天」；推算不出返回 None"""
+    """镜像 app.js dueDateOf：startDate + 全局天；fix112 起先做排课模板鉴别
+    （一天上下午两阶段模板按阶段名「第N天」，一天一阶段按顺序号）；
+    都推不出退回阶段名「第N天」；再推不出返回 None"""
     from datetime import datetime, timedelta
     sd = plan.get("startDate")
     if not sd:
@@ -124,15 +173,10 @@ def _due_date(plan, stage_name):
         dt = datetime.strptime(str(sd)[:10], "%Y-%m-%d")
     except ValueError:
         return None
-    ss = plan.get("stageStats") or []
+    m = _plan_sdm(plan)
     sn = stage_name or ""
-    idx = -1
-    for i, x in enumerate(ss):
-        if (x.get("phaseName") or "") == sn:
-            idx = i
-            break
-    if idx >= 0:
-        dt += timedelta(days=idx)
+    if sn in m:
+        dt += timedelta(days=m[sn] - 1)
     else:
         d = _cn_day_num(sn)
         if d is None:

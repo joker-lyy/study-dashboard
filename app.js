@@ -36,6 +36,62 @@ function cnDayNum(s) {
 // 应完成日期 ≤ 今天才算已到周期；未到周期的阶段不展示（避免满屏未来"未签到/未考"）。
 // ⚠️ 旧版按阶段名「第N天」推算，导致明细表列头日期与阶段完成情况/弹窗（dueDateOf）不一致：
 // 182期第四天实际 9-18 完成，明细表却把 9-18 列挂成第五天（用户报障 9-19）。
+/* ---------- 排课模板自动鉴别（fix112，参考「加盟商培训日报触发器」的设定）----------
+   两种排课模板：
+   A. 一天一阶段（182期式）：阶段顺序 = 全局天序（沿用旧口径）。
+   B. 一天上下午两阶段（181/183期式）：同一天两个阶段（如第1天上午理论+下午技术），
+      阶段名里的「第N天」就是全局天数，不能再按顺序推（否则第二天起全部错位一天）。
+   鉴别：阶段名解析出的「第N天」出现重复天号 → 疑似 B；
+   用 empDetails 任务完成时间交叉验证两个假设（完成日大多应落在 映射日期 上，与触发器同款验证），
+   择分高者；无完成数据时默认 B（近年新模板）。 */
+function dateAfterStartN(sd, n) {
+  const dt = new Date(sd + "T00:00:00");
+  dt.setDate(dt.getDate() + n - 1);
+  const pad = x => String(x).padStart(2, "0");
+  return dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate());
+}
+function stageDayMapOf(p) {
+  if (!p) return null;
+  if (p.__sdm) return p.__sdm;
+  const list = p.stageStats || [];
+  const names = list.map(x => x.phaseName || "");
+  const days = names.map(n => cnDayNum(n));
+  const cnt = {};
+  days.forEach(d => { if (d != null) cnt[d] = (cnt[d] || 0) + 1; });
+  const hasDup = Object.keys(cnt).some(k => cnt[k] > 1);
+  const seqMap = new Map(names.map((n, i) => [n, i + 1]));
+  let res;
+  if (!hasDup || !p.startDate) {
+    res = { mode: "seq", map: seqMap };
+  } else {
+    // ampm 假设：阶段名「第N天」= 全局天数（无天数后缀的阶段回退顺序号）
+    const ampmMap = new Map();
+    names.forEach((n, i) => ampmMap.set(n, days[i] != null ? days[i] : i + 1));
+    // 完成时间交叉验证：任务完成日 == startDate+(全局天-1) 的比例越高假设越可信
+    const score = m => {
+      let hit = 0, tot = 0;
+      const det0 = p.empDetails || {};
+      for (const eid in det0) {
+        for (const s of ((det0[eid] || {}).stages || [])) {
+          const d = m.get(s.n || "");
+          if (d == null) continue;
+          const expect = dateAfterStartN(p.startDate, d);
+          for (const t of (s.t || [])) {
+            const c = String(t[5] || "");
+            if (!/^\d{4}-\d{2}-\d{2}/.test(c)) continue;
+            tot++;
+            if (c.slice(0, 10) === expect) hit++;
+          }
+        }
+      }
+      return tot ? hit / tot : -1; // 无完成数据 → -1，两个假设并列时 ampm 胜出
+    };
+    res = (score(ampmMap) >= score(seqMap)) ? { mode: "ampm", map: ampmMap } : { mode: "seq", map: seqMap };
+  }
+  p.__sdm = res;
+  return res;
+}
+
 function isStageDue(p, sn) {
   const due = dueDateOf(p, sn);
   if (!due) return true; // 无法推算（无 stageStats/startDate）→ 一律展示
@@ -416,24 +472,20 @@ function renderMulti(plans, gnav) {
 
 /* ---------- 应完成日期推算 ----------
    规则（Rain 2026-09-18 定）：一个阶段算一天。
-   应完成日期 = 任务发布时间(startDate) + (阶段在该计划 stageStats 中的序号 - 1) 天。
-   例：182期发布 9-14，10 个阶段 → 9-14、9-15 …… 9-23（与计划结束日一致） */
+   fix112 升级：先做排课模板自动鉴别（stageDayMapOf）——
+   一天上下午两阶段模板（183期式）按阶段名「第N天」取全局天；一天一阶段模板按顺序号。
+   应完成日期 = 任务发布时间(startDate) + (全局天 - 1) 天。 */
 function dueDateOf(p, stageName) {
   if (!p || !p.startDate) return "";
-  const list = p.stageStats || [];
-  const idx = list.findIndex(x => (x.phaseName || "") === (stageName || ""));
-  const dt = new Date(p.startDate + "T00:00:00");
-  if (isNaN(dt.getTime())) return "";
-  if (idx >= 0) {
-    dt.setDate(dt.getDate() + idx);
-  } else {
+  const sdm = stageDayMapOf(p);
+  let n = sdm ? sdm.map.get(stageName || "") : null;
+  if (n == null) {
     // stageStats 缺失/阶段名对不上 → 退回按阶段名「第N天」推算（旧口径兜底）
     const day = cnDayNum(stageName);
     if (day == null) return "";
-    dt.setDate(dt.getDate() + (day - 1));
+    n = day;
   }
-  const pad = x => String(x).padStart(2, "0");
-  return dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate());
+  return dateAfterStartN(p.startDate, n);
 }
 
 // 列头全局天数编号（2026-09-19 Rain 拍板）：与加盟商培训日报同一套编号——一个阶段=一天，
@@ -446,17 +498,23 @@ function stageDayLabel(p, stageName) {
   const name = stageName || "";
   const m = /^【(.+?)】/.exec(name);
   const typ = m ? (STAGE_TYPE_ALIAS[m[1]] || m[1]) : "";
-  let n = null;
-  const list = (p && p.stageStats) || [];
-  const idx = list.findIndex(x => (x.phaseName || "") === name);
-  if (idx >= 0) {
-    n = idx + 1;
-  } else if (p && p.startDate) {
+  const sdm = stageDayMapOf(p);
+  let n = sdm ? sdm.map.get(name) : null;
+  if (n == null && p && p.startDate) {
     const due = dueDateOf(p, name);
     if (due) n = Math.round((new Date(due + "T00:00:00") - new Date(p.startDate + "T00:00:00")) / 86400000) + 1;
   }
   if (!n || n < 1) return esc(name).replace(/新加盟商培训/g, ""); // 兜底：无法定位全局天数时保持原样
-  return (typ ? esc(typ) : "") + "第" + n + "天";
+  // fix112：上下午拆分模板 → 同一天多个阶段标注（上午/下午，按 stageStats 顺序先上午后下午）
+  let suf = "";
+  if (sdm && sdm.mode === "ampm") {
+    const sameDay = (p.stageStats || []).filter(x => sdm.map.get(x.phaseName || "") === n);
+    if (sameDay.length > 1) {
+      const idx = sameDay.findIndex(x => (x.phaseName || "") === name);
+      suf = idx === 0 ? "（上午）" : "（下午）";
+    }
+  }
+  return (typ ? esc(typ) : "") + "第" + n + "天" + suf;
 }
 
 function setRange(r) {
@@ -655,7 +713,7 @@ function renderCat() {
       ${p.overview ? "" : `<span class="badge b-red">概述数据无权限（非计划管理员）</span>`}
     </div>
     ${cards}
-    ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况；应完成日期按「一个阶段 = 一天」推算（任务发布日 = 第 1 阶段）；完成率 =（必修课完成项数 ＋ 考试合格科数）÷ 两项应完成总数，拼盘截图等考核要老师打分（≥80）才算合格，待阅卷 = 未完成</div><table><tr><th>阶段</th><th>应完成日期</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
+    ${stageRows ? `<div class="sec"><h3>阶段完成情况</h3><div style="font-size:12px;color:var(--t2);margin-bottom:6px">点击阶段行可查看该阶段每位学员的学习 / 考试 / 实操完成情况；应完成日期按排课模板自动鉴别推算（一天一阶段 / 一天上下午两阶段，同触发器口径；任务发布日 = 第 1 天）；完成率 =（必修课完成项数 ＋ 考试合格科数）÷ 两项应完成总数，拼盘截图等考核要老师打分（≥80）才算合格，待阅卷 = 未完成</div><table><tr><th>阶段</th><th>应完成日期</th><th>应完成</th><th>未开始</th><th>进行中</th><th>已完成</th><th>完成率</th></tr>${stageRows}</table></div>` : ""}
     <div class="sec"${state.sub === "全部" ? ' style="margin-left:calc(50% - 50vw + 24px);margin-right:calc(50% - 50vw + 24px)"' : ""}>
       <h3>二级汇总</h3>
       <div class="subtabs">
