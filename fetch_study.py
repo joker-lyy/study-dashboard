@@ -454,10 +454,13 @@ def fetch_plan_detail(tok, plan):
         stages = []
         all_t = []
         for s in d.get("trainingStageDetailList", []):
+            # taskStatus 与 stageStatus 同一套枚举：W=已完成 / J=进行中 / S=未开始
+            # （fix 2026-10-10：曾误判 taskStatus=J 为免修剔除，导致进行中任务
+            #   如「煮寿司饭」「军舰饭团」从明细消失、不同学员任务数不一致。
+            #   平台 task 层级无免修状态，全部保留。）
             ts = [[t.get("taskName"), t.get("taskType"), t.get("taskStatus"),
                    t.get("score"), t.get("isPass"), t.get("taskFinished")]
-                  for t in s.get("trainingTaskDetailList", [])
-                  if t.get("taskStatus") != "J"]  # J=免修，不计入学习统计
+                  for t in s.get("trainingTaskDetailList", [])]
             all_t += ts
             stages.append({
                 "id": s.get("planStageId"), "n": s.get("stageName"), "s": s.get("stageStatus"),
