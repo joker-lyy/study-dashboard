@@ -624,7 +624,8 @@ function renderCat() {
   const timeCard = `<div class="card"><div class="k">学习时间</div><div class="v" style="font-size:14px;line-height:2;text-align:left">开始：${esc(vFrom || "-")}<br>结束：${esc(vTo || "-")}</div></div>`;
 
   // 概述卡片
-  // 完成率：必修课+考核口径（empStat 内已统一，2026-09-18）；无明细才回退平台字段
+  // 完成率（2026-10-14 Rain 定稿）：卡片名「必修课+考试完成率」，计算=empStat 口径
+  // （必修课(网课/实操)+考核合格 ÷ 应完成；与二级汇总/整体完成率同一口径，无明细才回退平台字段）
   let cardRate = 0;
   {
     let tT = 0, tD = 0, hasT = false;
@@ -659,7 +660,7 @@ function renderCat() {
     <div class="cards">
       <div class="card"><div class="k">应学人数</div><div class="v">${cardTotal}</div></div>
       <div class="card"><div class="k">已完成</div><div class="v">${cardDone}</div></div>
-      <div class="card"><div class="k">完成率</div><div class="v">${(cardRate || 0).toFixed(1)}<small>%</small></div></div>
+      <div class="card"><div class="k">必修课+考试完成率</div><div class="v">${(cardRate || 0).toFixed(1)}<small>%</small></div></div>
       <div class="card"><div class="k">考试平均分</div><div class="v">${examAvg ?? "-"}</div></div>
       <div class="card"><div class="k">应学门店</div><div class="v">${cardStores}</div></div>
       <div class="card"><div class="k">已参训门店</div><div class="v">${cardTrained}</div></div>
