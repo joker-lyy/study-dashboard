@@ -198,8 +198,12 @@ function stageRequired(p, e, stageName) {
     if (isGradedT(t)) { total++; if (examPassT(t)) done++; }
     else if (isCourseT(t)) { total++; if (t[2] === "W") done++; } // 必修四类；面授(3)/表单(7)不计
   });
-  // 该阶段只有普通作业/表单（无必修无考核）→ 退回全部任务口径，保证能归档状态
-  if (!total) { total = ts.length; done = ts.filter(t => t[2] === "W").length; }
+  // 该阶段只剩普通作业/表单（无必修无考核）→ 退回非面授任务口径（面授3仅签到不统计，2026-10-14 Rain 铁律）；
+  // 纯面授阶段 total=0，调用方按「—」/签到完成处理
+  if (!total) {
+    const rest = ts.filter(t => t[1] !== 3);
+    total = rest.length; done = rest.filter(t => t[2] === "W").length;
+  }
   return { total, done, hasStage: !!det && !!stg, hasEmp: !!det };
 }
 
@@ -875,7 +879,8 @@ function flatDetailTable(p, emps) {
       return stg && (stg.t || []).some(t => t[5] && t[5] !== "-");
     }).length;
     const scoreStr = exams.length ? exams.map(t => scoreCell(t, false)).join("</div><div>") : "—";
-    const detail = ts.map(t => {
+    // 面授课程（仅签到动作）不统计也不列出（2026-10-14 Rain 铁律，与阶段弹窗同口径）
+    const detail = ts.filter(t => t[1] !== 3).map(t => {
       const [name, type, st, score, isPass] = t;
       const lb = taskLabel(t);
       let extra = "";
@@ -1023,10 +1028,14 @@ function renderStageModal() {
     const det = p.empDetails && p.empDetails[String(e.employeeId)];
     return det && (det.stages || []).find(s => (s.n || "") === stageName);
   };
-  // 已完成/未完成 —— 与阶段汇总表同一口径：必修课全完成 + 考核全合格（截图打分≥80）才算已完成
+  // 已完成/未完成 —— 与阶段汇总表同一口径：必修课全完成 + 考核全合格（截图打分≥80）才算已完成；
+  // 纯面授阶段（无可统计任务）→ 按面授签到（任务W）判定，避免全员误判「未完成」
   const stageDone = e => {
     const r = stageRequired(p, e, stageName);
-    return r.hasStage && r.total > 0 && r.done >= r.total;
+    if (r.hasStage && r.total > 0) return r.done >= r.total;
+    const stg = stageOf(e);
+    const ts0 = stg ? (stg.t || []) : [];
+    return ts0.length > 0 && ts0.every(t => t[2] === "W");
   };
   if (state.dStatus === "已完成") emps = emps.filter(stageDone);
   if (state.dStatus === "未完成") emps = emps.filter(e => !stageDone(e));
@@ -1062,11 +1071,13 @@ function renderStageModal() {
     if (exams.length) {
       scoreStr = exams.map(t => scoreCell(t)).join("/");
     }
-    const stageDoneCnt = `${ts.filter(t => t[2] === "W").length}/${ts.length}`;
+    // 阶段进度：只统计可计任务（必修四类+考核/作业/表单），面授(3，仅签到)不统计（2026-10-14 Rain 铁律）；无可统计任务显示 —
+    const cnted = ts.filter(t => t[1] !== 3);
+    const stageDoneCnt = cnted.length ? `${cnted.filter(t => t[2] === "W").length}/${cnted.length}` : "—";
     const [attTxt, attCls] = attOf(e);
     const mg = mGroup(e);
-    // 任务明细：一行一个课题「课题名：完成情况」
-    const detail = ts.map(t => {
+    // 任务明细：一行一个课题「课题名：完成情况」；面授课程（仅签到动作）不统计也不列出（2026-10-14）
+    const detail = ts.filter(t => t[1] !== 3).map(t => {
       const [name, type, st, score, isPass] = t;
       const lb = taskLabel(t);
       let extra = "", bad = !lb.ok;
@@ -1082,7 +1093,7 @@ function renderStageModal() {
       }
       const col = lb.ok ? "var(--t1)" : lb.pending ? "#e6a23c" : "#e64340";
       return `<div style="padding:1px 0;color:${col}">${esc(name)}：${lb.txt}${extra}</div>`;
-    }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
+    }).join("") || (ts.length ? `<div style="color:var(--t2)">面授课程（仅签到），无统计任务</div>` : `<div style="color:var(--t2)">无任务数据</div>`);
     return `<tr>
       <td>${esc(e.empName)}</td>
       <td style="max-width:130px">${esc(storeOf(e))}</td>
