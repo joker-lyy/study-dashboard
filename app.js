@@ -118,6 +118,9 @@ function isUploadWorkT(t) { return t && /^上传/.test(t[0] || "") && (t[0] || "
 // 考核类任务：考试(type4)、课题名带「考核」（如「上传…考核截图/考核图片」，即使还没提交/没打分
 // 也要计入应完成——fix201 龙江 S 状态漏计导致混进已完成堆）、或带分数的作业/表单
 function isExamT(t) { return t && (t[1] === 4 || (t[0] || "").includes("考核") || (t[3] != null && t[3] !== "-" && !isNaN(+t[3]))); }
+// 学习任务完成率口径（Rain 2026-10-14 定稿）：必修的类型四类=理论考试(4)+实操考试(5)+视频课件(2/8)+图文课件(1/10)；
+// 面授课程(3，仅签到动作)、表单(7)、问卷(6)、练习(11)一律不计入。平台默认全部必修（studyRequirement 拿不到，按全必修处理）
+function isCourseT(t) { return t && [1, 2, 4, 5, 8, 10].includes(t[1]); }
 // 单科考核分数展示：待阅卷橙字、未考红字、0分红字、未过红字、<80红字
 function scoreCell(t, suffix) {
   const suf = suffix === false ? "" : "分";
@@ -193,7 +196,7 @@ function stageRequired(p, e, stageName) {
   let total = 0, done = 0;
   ts.forEach(t => {
     if (isGradedT(t)) { total++; if (examPassT(t)) done++; }
-    else if (t[1] === 3 || t[1] === 8) { total++; if (t[2] === "W") done++; }
+    else if (isCourseT(t)) { total++; if (t[2] === "W") done++; } // 必修四类；面授(3)/表单(7)不计
   });
   // 该阶段只有普通作业/表单（无必修无考核）→ 退回全部任务口径，保证能归档状态
   if (!total) { total = ts.length; done = ts.filter(t => t[2] === "W").length; }
@@ -547,7 +550,7 @@ function empStat(p, e) {
   let total = 0, done = 0;
   (det.stages || []).forEach(s => (s.t || []).forEach(t => {
     if (isGradedT(t)) { total++; if (examPassT(t)) done++; }
-    else if (t[1] === 3 || t[1] === 8) { total++; if (t[2] === "W") done++; }
+    else if (isCourseT(t)) { total++; if (t[2] === "W") done++; } // 必修四类：视频/图文课件+实操视频；面授(3)/表单(7)不计
   }));
   if (!total) { total = det.total || 0; done = det.done || 0; } // 明细里没任务 → 退回平台数
   const status = total > 0 && done >= total ? 2 : done > 0 ? 1 : 0;
@@ -624,7 +627,9 @@ function renderCat() {
   const timeCard = `<div class="card"><div class="k">学习时间</div><div class="v" style="font-size:14px;line-height:2;text-align:left">开始：${esc(vFrom || "-")}<br>结束：${esc(vTo || "-")}</div></div>`;
 
   // 概述卡片
-  // 完成率（2026-10-14 Rain 定稿）：卡片名「必修课+考试完成率」，计算=empStat 口径
+  // 学习任务完成率（2026-10-14 定稿）：已完成学习任务 ÷ 应学习任务
+  // 口径=必修四类（理论考试4+实操考试5+视频课件2/8+图文课件1/10，须带必修标记；面授3仅签到不计）
+  // 侧实现：empStat/isCourseT 已按四类过滤；studyRequirement 接口拿不到，平台默认全必修按全必修处理
   // （必修课(网课/实操)+考核合格 ÷ 应完成；与二级汇总/整体完成率同一口径，无明细才回退平台字段）
   let cardRate = 0;
   {
@@ -660,7 +665,7 @@ function renderCat() {
     <div class="cards">
       <div class="card"><div class="k">应学人数</div><div class="v">${cardTotal}</div></div>
       <div class="card"><div class="k">已完成</div><div class="v">${cardDone}</div></div>
-      <div class="card"><div class="k">必修课+考试完成率</div><div class="v">${(cardRate || 0).toFixed(1)}<small>%</small></div></div>
+      <div class="card"><div class="k">学习任务完成率</div><div class="v">${(cardRate || 0).toFixed(1)}<small>%</small></div></div>
       <div class="card"><div class="k">考试平均分</div><div class="v">${examAvg ?? "-"}</div></div>
       <div class="card"><div class="k">应学门店</div><div class="v">${cardStores}</div></div>
       <div class="card"><div class="k">已参训门店</div><div class="v">${cardTrained}</div></div>
@@ -832,8 +837,8 @@ function aggDetailTable(p, emps) {
       }
       // 分数：该天全部考核，多科/隔开；未考=有考试未完成；—=无考试；红=未达80
       const exams = sts.filter(isExamT);
-      // 必修课=网课(3)+实操课(8)：实操视频课（手握饭团等）同为强制学习，按必修口径统计
-      const learn = sts.filter(t => t[1] === 3 || t[1] === 8);
+      // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计入
+      const learn = sts.filter(isCourseT);
       let scoreStr = "";
       if (exams.length) {
         // 多科竖排，每科一行，避免横向超出格子；无考试则不显示该行
@@ -1049,8 +1054,8 @@ function renderStageModal() {
   const rows = emps.map(e => {
     const stage = stageOf(e);
     const ts = stage ? stage.t : [];
-    // 必修课=网课(3)+实操课(8)：实操视频课同为强制学习；作业/表单(5/7)单列
-    const learn = ts.filter(t => t[1] === 3 || t[1] === 8), exams = ts.filter(isExamT), ops = ts.filter(t => [5, 7].includes(t[1]));
+    // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计；作业/表单(5/7)单列
+    const learn = ts.filter(isCourseT), exams = ts.filter(isExamT), ops = ts.filter(t => [5, 7].includes(t[1]));
     const cnt = a => a.length ? `${a.filter(t => t[2] === "W").length}/${a.length}` : "—";
     // 分数：该阶段全部考核，多科以/隔开；未考=有考试未完成；—=无考试；红=未达80
     let scoreStr = "—";
