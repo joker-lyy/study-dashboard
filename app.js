@@ -128,11 +128,11 @@ function isMediaT(t) { return t && [1, 2, 8, 10].includes(t[1]); }
 // 单科考核分数展示：待阅卷橙字、未考红字、0分红字、未过红字、<80红字
 function scoreCell(t, suffix) {
   const suf = suffix === false ? "" : "分";
-  if (!t) return `<span style="color:#e64340;font-weight:600">未考</span>`;
+  if (!t) return `<span style="color:#e64340;font-weight:600">缺考</span>`;
   const upB = isUploadWorkT(t); // 上传考核（A/B 同权 fix206）：待阅卷态叫「待审核」
   // 考试券状态：DYJ=已提交待老师阅卷；S/未提交=未考；W 但没分数=已交未阅（也归待阅卷）
   if (t[2] === "DYJ" || t[4] === "待阅卷") return `<span style="color:#e6a23c;font-weight:600">${upB ? "待审核" : "待阅卷"}</span>`;
-  if (t[2] !== "W") return `<span style="color:#e64340;font-weight:600">未考</span>`;
+  if (t[2] !== "W") return `<span style="color:#e64340;font-weight:600">缺考</span>`;
   const n = +t[3];
   if (isNaN(n)) return `<span style="color:#e6a23c;font-weight:600">${upB ? "待审核" : "待阅卷"}</span>`;
   const bad = n < 80 || t[4] === "否";
@@ -889,7 +889,7 @@ function flatDetailTable(p, emps) {
       const [name, type, st, score, isPass] = t;
       const lb = taskLabel(t);
       let extra = "";
-      if ((type === 4 || isExamT(t)) && !lb.pending) extra = score !== "-" && score != null ? `（${score}分）` : "（未考）";
+      if ((type === 4 || isExamT(t)) && !lb.pending) extra = score !== "-" && score != null ? `（${score}分）` : "（缺考）";
       const col = lb.ok ? "var(--t1)" : lb.pending ? "#e6a23c" : "#e64340";
       return `<div style="padding:1px 0;color:${col}">${esc(name)}：${lb.txt}${extra}</div>`;
     }).join("") || `<div style="color:var(--t2)">无任务数据</div>`;
@@ -1069,17 +1069,19 @@ function renderStageModal() {
     const stage = stageOf(e);
     const ts = stage ? stage.t : [];
     // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计；作业/表单(5/7)单列
-    // 列口径（2026-10-14 Rain 定稿，三列互不重叠）：必修课=图文/视频课件(isMediaT)；
-    // 实操=需上传文件的实操考试(5)；考试分数=isExamT；阶段进度=该阶段全部非面授任务逐项计（面授3剔除）
-    const learn = ts.filter(isMediaT), exams = ts.filter(isExamT), ops = ts.filter(t => t[1] === 5);
+    // 列口径（2026-10-14 Rain 定稿，三列互斥且相加=阶段进度）：必修课=图文/视频课件(isMediaT)；
+    // 实操=需上传文件的实操考试(5)；考试分数=isExamT 但剔除 type5（拼盘上传归实操列，不重复计分）
+    const learn = ts.filter(isMediaT), exams = ts.filter(t => isExamT(t) && t[1] !== 5), ops = ts.filter(t => t[1] === 5);
     const cnt = a => a.length ? `${a.filter(t => t[2] === "W").length}/${a.length}` : "—";
-    // 分数：该阶段全部考核，多科以/隔开；未考=有考试未完成；—=无考试；红=未达80
+    // 分数：该阶段全部考核（不含拼盘上传），前缀显示 x/y 计数（与必修课/实操列相加=阶段进度）；未考=有考试未完成；—=无考试；红=未达80
     let scoreStr = "—";
     if (exams.length) {
-      scoreStr = exams.map(t => scoreCell(t)).join("/");
+      const exDone = exams.filter(t => t[2] === "W" && !examFailT(t)).length;
+      scoreStr = `<div style="font-weight:600">${exDone}/${exams.length}</div><div>${exams.map(t => scoreCell(t)).join("/")}</div>`;
     }
-    // 阶段进度：该阶段全部任务（面授3剔除）逐项计，每项只算一次；考核需合格（<80=未通过不算完成）
-    const cnted = ts.filter(t => t[1] !== 3);
+    // 阶段进度 = 必修课 + 实操 + 考试 三列之和（互斥可加，2026-10-14 Rain 铁律：必修+实操=阶段进度必须对得上）；
+    // 面授(3)与无分表单(7)不计；考核/上传需合格（<80=未通过不算完成）；无可统计任务显示 —
+    const cnted = [...learn, ...ops, ...exams];
     const stageDoneCnt = cnted.length ? `${cnted.filter(t => t[2] === "W" && (!isExamT(t) || !examFailT(t))).length}/${cnted.length}` : "—";
     const [attTxt, attCls] = attOf(e);
     const mg = mGroup(e);
@@ -1096,7 +1098,7 @@ function renderStageModal() {
         }
       } else if ((type === 4 || isExamT(t)) && !lb.pending) {
         if (score !== "-" && score != null && !isNaN(+score)) { extra = `（${score}分）`; if (+score < 80 || +score === 0 || isPass === "否") bad = true; }
-        else extra = "（未考）";
+        else extra = "（缺考）";
       }
       const col = lb.ok ? "var(--t1)" : lb.pending ? "#e6a23c" : "#e64340";
       return `<div style="padding:1px 0;color:${col}">${esc(name)}：${lb.txt}${extra}</div>`;
@@ -1114,7 +1116,7 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=平台面授签到记录（已签到/未签到/请假按慧运营后台实际考勤显示，2026-10-09 起；已签到旁的时间为该课任务完成时间），请假=平台考勤登记或培训部手工名单，请假当天不计出勤；分数为当天全部考核成绩（多科以 / 隔开），<b>未考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷/待审核 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b>「上传拼盘实操考核图片」与「上传慧运营的拼盘学习工具考核截图」同权（fix206）：均为真实考核（老师打分）——未上传=未完成、已上传未打分=待审核（黄）、已打分=已完成（N分，&lt;80 ✗ 未通过）。<b>所有考核打分 &lt;80 分一律显示 ✗ 未通过（红）并计入未完成。</b></div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=平台面授签到记录（已签到/未签到/请假按慧运营后台实际考勤显示，2026-10-09 起；已签到旁的时间为该课任务完成时间），请假=平台考勤登记或培训部手工名单，请假当天不计出勤；分数为当天全部考核成绩（多科以 / 隔开，上方 x/y 为考试科数，与必修课、实操相加=阶段进度），<b>缺考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷/待审核 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b>「上传拼盘实操考核图片」与「上传慧运营的拼盘学习工具考核截图」同权（fix206）：均为真实考核（老师打分）——未上传=未完成、已上传未打分=待审核（黄）、已打分=已完成（N分，&lt;80 ✗ 未通过）。<b>所有考核打分 &lt;80 分一律显示 ✗ 未通过（红）并计入未完成。</b></div>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
