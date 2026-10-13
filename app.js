@@ -121,6 +121,10 @@ function isExamT(t) { return t && (t[1] === 4 || (t[0] || "").includes("考核")
 // 学习任务完成率口径（Rain 2026-10-14 定稿）：必修的类型四类=理论考试(4)+实操考试(5)+视频课件(2/8)+图文课件(1/10)；
 // 面授课程(3，仅签到动作)、表单(7)、问卷(6)、练习(11)一律不计入。平台默认全部必修（studyRequirement 拿不到，按全必修处理）
 function isCourseT(t) { return t && [1, 2, 4, 5, 8, 10].includes(t[1]); }
+// 阶段弹窗「必修课」列口径（Rain 2026-10-14 定稿）：只算图文(1/10)+视频课件(2/8)——
+// 上传/实操(type5)归「实操」列、考试(type4)归「考试分数」列，三列互不重叠；
+// 注意 isCourseT 是完成率口径（含考试/实操），列展示别混用
+function isMediaT(t) { return t && [1, 2, 8, 10].includes(t[1]); }
 // 单科考核分数展示：待阅卷橙字、未考红字、0分红字、未过红字、<80红字
 function scoreCell(t, suffix) {
   const suf = suffix === false ? "" : "分";
@@ -842,7 +846,8 @@ function aggDetailTable(p, emps) {
       // 分数：该天全部考核，多科/隔开；未考=有考试未完成；—=无考试；红=未达80
       const exams = sts.filter(isExamT);
       // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计入
-      const learn = sts.filter(isCourseT);
+      // 必修课列=图文/视频课件(isMediaT)，与实操/考试列互不重叠（2026-10-14 Rain 定稿）
+      const learn = sts.filter(isMediaT);
       let scoreStr = "";
       if (exams.length) {
         // 多科竖排，每科一行，避免横向超出格子；无考试则不显示该行
@@ -1064,15 +1069,17 @@ function renderStageModal() {
     const stage = stageOf(e);
     const ts = stage ? stage.t : [];
     // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计；作业/表单(5/7)单列
-    const learn = ts.filter(isCourseT), exams = ts.filter(isExamT), ops = ts.filter(t => t[1] === 5); // 实操列=实操考试(5)单项；表单(7)不混入（2026-10-14 Rain 指正）
+    // 列口径（2026-10-14 Rain 定稿，三列互不重叠）：必修课=图文/视频课件(isMediaT)；
+    // 实操=需上传文件的实操考试(5)；考试分数=isExamT；阶段进度=该阶段全部非面授任务逐项计（面授3剔除）
+    const learn = ts.filter(isMediaT), exams = ts.filter(isExamT), ops = ts.filter(t => t[1] === 5);
     const cnt = a => a.length ? `${a.filter(t => t[2] === "W").length}/${a.length}` : "—";
     // 分数：该阶段全部考核，多科以/隔开；未考=有考试未完成；—=无考试；红=未达80
     let scoreStr = "—";
     if (exams.length) {
       scoreStr = exams.map(t => scoreCell(t)).join("/");
     }
-    // 阶段进度：与 stageRequired 同口径=必修四类+考核/作业（isGradedT），面授(3)与无分表单(7)不统计（2026-10-14）；无可统计任务显示 —
-    const cnted = ts.filter(t => isGradedT(t) || isCourseT(t));
+    // 阶段进度：该阶段全部任务（面授3剔除）逐项计，每项只算一次；考核需合格（<80=未通过不算完成）
+    const cnted = ts.filter(t => t[1] !== 3);
     const stageDoneCnt = cnted.length ? `${cnted.filter(t => t[2] === "W" && (!isExamT(t) || !examFailT(t))).length}/${cnted.length}` : "—";
     const [attTxt, attCls] = attOf(e);
     const mg = mGroup(e);
