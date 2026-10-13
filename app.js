@@ -1069,9 +1069,9 @@ function renderStageModal() {
     const stage = stageOf(e);
     const ts = stage ? stage.t : [];
     // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计；作业/表单(5/7)单列
-    // 列口径（2026-10-14 Rain 定稿，三列互斥且相加=阶段进度）：必修课=图文/视频课件(isMediaT)；
+    // 列口径（2026-10-14 Rain 定稿，三列互斥且相加=阶段进度）：必修课=图文/视频课件(isMediaT)+表单(7，如原材千元备货表，按必修学习项统计)；
     // 实操=需上传文件的实操考试(5)；考试分数=isExamT 但剔除 type5（拼盘上传归实操列，不重复计分）
-    const learn = ts.filter(isMediaT), exams = ts.filter(t => isExamT(t) && t[1] !== 5), ops = ts.filter(t => t[1] === 5);
+    const learn = ts.filter(t => isMediaT(t) || t[1] === 7), exams = ts.filter(t => isExamT(t) && t[1] !== 5), ops = ts.filter(t => t[1] === 5);
     const cnt = a => a.length ? `${a.filter(t => t[2] === "W").length}/${a.length}` : "—";
     // 分数：该阶段全部考核（不含拼盘上传），前缀显示 x/y 计数（与必修课/实操列相加=阶段进度）；未考=有考试未完成；—=无考试；红=未达80
     let scoreStr = "—";
