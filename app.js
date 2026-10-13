@@ -1064,16 +1064,16 @@ function renderStageModal() {
     const stage = stageOf(e);
     const ts = stage ? stage.t : [];
     // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计；作业/表单(5/7)单列
-    const learn = ts.filter(isCourseT), exams = ts.filter(isExamT), ops = ts.filter(t => [5, 7].includes(t[1]));
+    const learn = ts.filter(isCourseT), exams = ts.filter(isExamT), ops = ts.filter(t => t[1] === 5); // 实操列=实操考试(5)单项；表单(7)不混入（2026-10-14 Rain 指正）
     const cnt = a => a.length ? `${a.filter(t => t[2] === "W").length}/${a.length}` : "—";
     // 分数：该阶段全部考核，多科以/隔开；未考=有考试未完成；—=无考试；红=未达80
     let scoreStr = "—";
     if (exams.length) {
       scoreStr = exams.map(t => scoreCell(t)).join("/");
     }
-    // 阶段进度：只统计可计任务（必修四类+考核/作业/表单），面授(3，仅签到)不统计（2026-10-14 Rain 铁律）；无可统计任务显示 —
-    const cnted = ts.filter(t => t[1] !== 3);
-    const stageDoneCnt = cnted.length ? `${cnted.filter(t => t[2] === "W").length}/${cnted.length}` : "—";
+    // 阶段进度：与 stageRequired 同口径=必修四类+考核/作业（isGradedT），面授(3)与无分表单(7)不统计（2026-10-14）；无可统计任务显示 —
+    const cnted = ts.filter(t => isGradedT(t) || isCourseT(t));
+    const stageDoneCnt = cnted.length ? `${cnted.filter(t => t[2] === "W" && (!isExamT(t) || !examFailT(t))).length}/${cnted.length}` : "—";
     const [attTxt, attCls] = attOf(e);
     const mg = mGroup(e);
     // 任务明细：一行一个课题「课题名：完成情况」；面授课程（仅签到动作）不统计也不列出（2026-10-14）
