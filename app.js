@@ -2592,13 +2592,83 @@ window.sharePng = async function (mode) {
     const box = document.getElementById("psList");
     if (!box) return;
     if (!rows.length) { box.innerHTML = `<div style="color:#7a8399;font-size:13px;padding:14px 0">暂无提报记录（店长提交后自动出现在这里）</div>`; return; }
-    box.innerHTML = `<table><tr><th>提报时间</th><th>门店</th><th>姓名</th><th>提报职位</th><th style="width:120px">操作</th></tr>` +
+    box.innerHTML = `<table><tr><th>提报时间</th><th>门店</th><th>姓名</th><th>提报职位</th><th style="min-width:260px">学习进度判定（提报职位及之前全部地图）</th><th style="width:120px">操作</th></tr>` +
       rows.map(r => {
         const p = parseName(r.name);
-        return `<tr><td>${fmtT(r.time)}</td><td>${esc(r.store || "—")}</td><td>${esc(p.name)}</td><td>${esc(p.pos || "—")}</td>
-          <td><button class="btn" style="padding:3px 10px;font-size:12px" onclick="psEdit('${r.id}')">编辑</button>
+        const j = psJudge(r.store || "", p.name, p.pos);
+        return `<tr><td style="white-space:nowrap">${fmtT(r.time)}</td><td>${esc(r.store || "—")}</td><td>${esc(p.name)}</td><td>${esc(p.pos || "—")}</td>
+          <td style="white-space:normal;word-break:break-all">${j.html}</td>
+          <td style="white-space:nowrap"><button class="btn" style="padding:3px 10px;font-size:12px" onclick="psEdit('${r.id}')">编辑</button>
           <button class="btn" style="padding:3px 10px;font-size:12px;background:#fdecec;color:#A32D2D" onclick="psDel('${r.id}')">删除</button></td></tr>`;
       }).join("") + `</table>`;
+  }
+
+  /* ---- 学习进度判定（与 _promo_notify.py judge_progress 同口径 + 职位层级匹配）----
+     提报某职位 = 该职位及之前的所有晋升地图：进度100% 且 已发布任务全部完成(status=3)、
+     考核/考试/练习类任务分数≥80。未满足 → 罗列未完成/未达标明细。 */
+  function psNorm(s) { return String(s || "").replace(/ /g, "").replace(/\u3000/g, "").trim(); }
+  function psMapRank(n) {
+    n = n || "";
+    if (/初级学徒|学徒学习地图|转正/.test(n)) return 0;
+    if (/初级师傅/.test(n)) return 1;
+    if (/中级师傅/.test(n)) return 2;
+    if (/星级师傅/.test(n)) return 3;
+    if (/店长/.test(n)) return 4;
+    return 99; // 未识别名称的晋升地图一并计入
+  }
+  function psPosRank(p) {
+    p = p || "";
+    if (/初级师傅/.test(p)) return 1;
+    if (/中级师傅/.test(p)) return 2;
+    if (/星级师傅/.test(p)) return 3;
+    if (/店长/.test(p)) return 4;
+    return 99; // 职位未识别 → 全部地图都算
+  }
+  function psJudge(store, name, pos) {
+    if (!name) return { cls: "na", html: `<span style="color:#9aa1af">—</span>` };
+    const sN = psNorm(store), nN = psNorm(name), R = psPosRank(pos);
+    const hits = [];
+    (DATA.maps || []).forEach(mp => {
+      if ((mp.categoryName || "") !== "晋升") return;
+      const r = psMapRank(mp.mapName || "");
+      if (r <= R) (mp.emps || []).forEach(e => {
+        if (psNorm(e.employeeName) !== nN) return;
+        const es = psNorm(e.storeName || "");
+        if (!es || (es !== sN && sN.indexOf(es) < 0 && es.indexOf(sN) < 0)) return;
+        hits.push({ mp, e });
+      });
+    });
+    if (!hits.length) return { cls: "na", html: `<span style="color:#9aa1af">未在学习地图匹配到该员工（核对姓名/门店；或该员工尚未派发晋升地图）</span>` };
+    hits.sort((a, b) => (+b.e.completionSchedule || 0) - (+a.e.completionSchedule || 0));
+    const dmEmps = (DATA.directMaps || {}).emps || {};
+    let allDone = true;
+    const blocks = hits.map(({ mp, e }) => {
+      const prog = +e.completionSchedule || 0;
+      const tasks = [];
+      const rec = dmEmps[String(e.employeeId)];
+      const mrec = rec && (rec.maps || []).find(m => String(m.mapId) === String(mp.mapId));
+      if (mrec && (mrec.stages || []).length) {
+        mrec.stages.forEach(st => (st.tasks || []).forEach(t => {
+          const tn = t.taskName || "?";
+          if (String(t.status) !== "3") tasks.push(esc((st.stageName || "") + "：" + tn + "（未完成）"));
+          else {
+            const sc = parseFloat(t.realScore);
+            if (!isNaN(sc) && sc < 80 && /考核|考试|练习/.test(tn)) tasks.push(esc((st.stageName || "") + "：" + tn + " " + sc + "分（未达标）"));
+          }
+        }));
+      }
+      const done = prog >= 100 && !tasks.length;
+      if (!done) allDone = false;
+      let seg = `<b>${esc(mp.mapName || "")}</b> 进度 ${prog.toFixed(0)}% ${done ? "✅" : "❌"}`;
+      if (e.stageName && e.stageName !== "-") seg += `（当前阶段：${esc(e.stageName)}）`;
+      if (tasks.length) seg += `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${tasks.join("<br>")}</div>`;
+      else if (!mrec && prog < 100) seg += `<div style="color:#9aa1af;font-size:12px;margin-top:2px">非直营组学员，未完成任务明细需在学习地图后台查看</div>`;
+      return seg;
+    });
+    const verdict = allDone
+      ? `<span style="color:#3B6D11;font-weight:600">符合晋升条件 ✅</span>`
+      : `<span style="color:#A32D2D;font-weight:600">不符合晋升条件 ❌</span>`;
+    return { cls: allDone ? "ok" : "bad", html: verdict + `<div style="font-size:12px;margin-top:4px;display:flex;flex-direction:column;gap:6px">${blocks.join("")}</div>` };
   }
 
   function psForm(title, rec) {
