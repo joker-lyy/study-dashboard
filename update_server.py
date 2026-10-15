@@ -136,23 +136,32 @@ def _promo_proxy(method, qs, body=None):
             return r.status, (json.loads(txt) if txt else [])
     except urllib.error.HTTPError as e:
         try:
-            return e.code, json.loads(e.read().decode("utf-8"))
+            body = json.loads(e.read().decode("utf-8"))
         except Exception:
-            return e.code, {"ok": False, "msg": "HTTP %s" % e.code}
+            body = {"ok": False, "msg": "HTTP %s" % e.code}
+        # 系统代理 502/503/504（CONNECT 打不通）→ 直连兜底重试（10/15 高瑞瑜删除失败实锤）
+        if e.code in (502, 503, 504):
+            return _promo_direct(req)
+        return e.code, body
     except Exception as e:
         # 系统代理失败 → 直连兜底（两条路总有一条通）
+        return _promo_direct(req, first_err=e)
+
+
+def _promo_direct(req, first_err=None):
+    import urllib.error
+    try:
+        op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with op.open(req, timeout=20) as r:
+            txt = r.read().decode("utf-8")
+            return r.status, (json.loads(txt) if txt else [])
+    except urllib.error.HTTPError as e2:
         try:
-            op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            with op.open(req, timeout=20) as r:
-                txt = r.read().decode("utf-8")
-                return r.status, (json.loads(txt) if txt else [])
-        except urllib.error.HTTPError as e2:
-            try:
-                return e2.code, json.loads(e2.read().decode("utf-8"))
-            except Exception:
-                return e2.code, {"ok": False, "msg": "HTTP %s" % e2.code}
-        except Exception as e2:
-            return 502, {"ok": False, "msg": "proxy:%s direct:%s" % (e, e2)}
+            return e2.code, json.loads(e2.read().decode("utf-8"))
+        except Exception:
+            return e2.code, {"ok": False, "msg": "HTTP %s" % e2.code}
+    except Exception as e2:
+        return 502, {"ok": False, "msg": "proxy:%s direct:%s" % (first_err or "n/a", e2)}
 
 
 def _butler_alive():
@@ -286,7 +295,7 @@ class H(SimpleHTTPRequestHandler):
                         if not upd:
                             raise ValueError("缺少要更新的字段")
                         code, data = _promo_proxy("PATCH", "?id=eq.%s&game=eq.promo_signup" % rid, upd)
-                log("晋升报名 %s → HTTP %s" % (path0.rsplit("_", 1)[-1], code))
+                log("晋升报名 %s → HTTP %s %s" % (path0.rsplit("_", 1)[-1], code, json.dumps(data, ensure_ascii=False)[:200] if code >= 300 else ""))
                 return self._json({"ok": 200 <= code < 300, "msg": None if 200 <= code < 300 else ("HTTP %s" % code)})
             except Exception as e:
                 return self._json({"ok": False, "msg": str(e)}, 400)
