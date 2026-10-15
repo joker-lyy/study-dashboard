@@ -2577,9 +2577,17 @@ window.sharePng = async function (mode) {
     if (!box) return;
     box.innerHTML = `<div style="color:#7a8399;font-size:13px;padding:14px 0">加载中…</div>`;
     try {
-      const r = await fetch(SB_URL + "?game=eq.promo_signup&select=id,store,name,time,errors&order=time.desc&limit=200", { headers: sbHeaders() });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const rows = await r.json();
+      /* 优先走本机 8767 代理（service key 仅在本机服务端）；失败降级直连 supabase */
+      let r = await fetch("http://localhost:8767/api/promo_records").catch(() => null);
+      if (r && r.ok) {
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.msg || "代理返回失败");
+        var rows = j.rows || [];
+      } else {
+        const r2 = await fetch(SB_URL + "?game=eq.promo_signup&select=id,store,name,time,errors&order=time.desc&limit=200", { headers: sbHeaders() });
+        if (!r2.ok) throw new Error("HTTP " + r2.status);
+        var rows = await r2.json();
+      }
       if (typeof PS_ROWS !== "undefined") PS_ROWS = rows;
       window.PS_ROWS = rows;
       psTable(rows);
@@ -2747,13 +2755,20 @@ window.sharePng = async function (mode) {
       const btn2 = document.getElementById("psSaveBtn");
       btn2.disabled = true; btn2.textContent = "保存中…";
       try {
-        let r;
-        if (rec) {
-          r = await fetch(SB_URL + "?id=eq." + rec.id, { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ store, name: JSON.stringify({ name, position: pos }) }) });
-        } else {
-          r = await fetch(SB_URL, { method: "POST", headers: sbHeaders(), body: JSON.stringify({ game: "promo_signup", store, time: Date.now(), errors: 0, name: JSON.stringify({ name, position: pos }) }) });
+        let r, j;
+        const viaProxy = rec
+          ? { u: "http://localhost:8767/api/promo_upd", b: { id: rec.id, store, name: JSON.stringify({ name, position: pos }) } }
+          : { u: "http://localhost:8767/api/promo_add", b: { store, name: JSON.stringify({ name, position: pos }), time: Date.now() } };
+        r = await fetch(viaProxy.u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(viaProxy.b) }).catch(() => null);
+        j = r ? await r.json().catch(() => ({})) : null;
+        if (!j || !j.ok) {
+          if (rec) {
+            r = await fetch(SB_URL + "?id=eq." + rec.id, { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ store, name: JSON.stringify({ name, position: pos }) }) });
+          } else {
+            r = await fetch(SB_URL, { method: "POST", headers: sbHeaders(), body: JSON.stringify({ game: "promo_signup", store, time: Date.now(), errors: 0, name: JSON.stringify({ name, position: pos }) }) });
+          }
+          if (!r.ok) { const t = await r.text(); throw new Error("HTTP " + r.status + " " + t.slice(0, 120)); }
         }
-        if (!r.ok) { const t = await r.text(); throw new Error("HTTP " + r.status + " " + t.slice(0, 120)); }
         ov.remove(); psErr(""); psLoad();
       } catch (e) {
         btn2.disabled = false; btn2.textContent = "保存";
@@ -2770,8 +2785,12 @@ window.sharePng = async function (mode) {
   window.psDel = async function (id) {
     if (!confirm("确定删除这条提报记录？删除后不可恢复。")) return;
     try {
-      const r = await fetch(SB_URL + "?id=eq." + id, { method: "DELETE", headers: sbHeaders() });
-      if (!r.ok) { const t = await r.text(); throw new Error("HTTP " + r.status + " " + t.slice(0, 120)); }
+      let r = await fetch("http://localhost:8767/api/promo_del", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+      let j = r ? await r.json().catch(() => ({})) : null;
+      if (!j || !j.ok) {
+        r = await fetch(SB_URL + "?id=eq." + id, { method: "DELETE", headers: sbHeaders() });
+        if (!r.ok) { const t = await r.text(); throw new Error("HTTP " + r.status + " " + t.slice(0, 120)); }
+      }
       psErr(""); psLoad();
     } catch (e) { psErr("删除失败：" + (e.message || e)); }
   };

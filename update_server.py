@@ -109,6 +109,40 @@ def update_job(reason="页面手动更新"):
         log("!! 异常: %s" % e)
 
 
+def _promo_secrets():
+    """晋升报名管理用的 Supabase service key（仅存本地 data/_promo_secrets.json，不入库）。"""
+    try:
+        with open(os.path.join(DIR, "data", "_promo_secrets.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _promo_proxy(method, qs, body=None):
+    """本机代理转发 Supabase REST（本机 TLS 被代理重置 → 由 8767 服务端直连）。"""
+    import urllib.error
+    sec = _promo_secrets()
+    if not sec:
+        return 500, {"ok": False, "msg": "缺少 data/_promo_secrets.json"}
+    url = "%s/rest/v1/puzzle_records%s" % (sec["url"], qs)
+    data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method, headers={
+        "apikey": sec["serviceKey"], "Authorization": "Bearer " + sec["serviceKey"],
+        "Content-Type": "application/json", "Prefer": "return=representation"})
+    try:
+        # 用默认 opener（走系统代理）：本机直连 supabase 会被重置，浏览器/代理链路才是通的
+        with urllib.request.urlopen(req, timeout=20) as r:
+            txt = r.read().decode("utf-8")
+            return r.status, (json.loads(txt) if txt else [])
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode("utf-8"))
+        except Exception:
+            return e.code, {"ok": False, "msg": "HTTP %s" % e.code}
+    except Exception as e:
+        return 502, {"ok": False, "msg": str(e)}
+
+
 def _butler_alive():
     try:
         with _OP.open("http://127.0.0.1:8766/health", timeout=1.5) as r:
@@ -141,6 +175,8 @@ class H(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # LNA（Local Network Access）：公网页面(GitHub Pages)→127.0.0.1 请求需要（fix226 同款）
+        self.send_header("Access-Control-Allow-Private-Network", "true")
         if not self.path.startswith("/data/"):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         super().end_headers()
@@ -174,6 +210,9 @@ class H(SimpleHTTPRequestHandler):
             except Exception:
                 m = {}
             return self._json({"ok": True, "overrides": m})
+        if p == "/api/promo_records":
+            code, data = _promo_proxy("GET", "?game=eq.promo_signup&select=id,store,name,time&order=time.desc&limit=200")
+            return self._json({"ok": code == 200, "rows": data if isinstance(data, list) else []}, 200)
         return super().do_GET()
 
     def do_POST(self):
@@ -210,6 +249,33 @@ class H(SimpleHTTPRequestHandler):
                 os.replace(tmp, path)
                 log("分类覆盖已保存: %d 项" % len(ov))
                 return self._json({"ok": True})
+            except Exception as e:
+                return self._json({"ok": False, "msg": str(e)}, 400)
+        if self.path.split("?")[0] in ("/api/promo_del", "/api/promo_upd", "/api/promo_add"):
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+                path0 = self.path.split("?")[0]
+                if path0 == "/api/promo_add":
+                    ins = {"game": "promo_signup", "store": body.get("store") or "",
+                           "name": body.get("name") or "{}", "time": int(body.get("time") or 0), "errors": 0}
+                    code, data = _promo_proxy("POST", "", ins)
+                else:
+                    rid = str(body.get("id") or "").strip()
+                    if not rid:
+                        raise ValueError("缺少 id")
+                    if path0 == "/api/promo_del":
+                        code, data = _promo_proxy("DELETE", "?id=eq.%s&game=eq.promo_signup" % rid)
+                    else:
+                        upd = {}
+                        for k in ("store", "name", "time"):
+                            if body.get(k) is not None:
+                                upd[k] = body[k]
+                        if not upd:
+                            raise ValueError("缺少要更新的字段")
+                        code, data = _promo_proxy("PATCH", "?id=eq.%s&game=eq.promo_signup" % rid, upd)
+                log("晋升报名 %s → HTTP %s" % (path0.rsplit("_", 1)[-1], code))
+                return self._json({"ok": 200 <= code < 300, "msg": None if 200 <= code < 300 else ("HTTP %s" % code)})
             except Exception as e:
                 return self._json({"ok": False, "msg": str(e)}, 400)
         return self._json({"ok": False}, 404)
