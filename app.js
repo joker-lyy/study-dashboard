@@ -2667,15 +2667,17 @@ window.sharePng = async function (mode) {
     let allDone = true;
     const mapSegs = [], taskLines = [];
     const empIds = new Set(hits.map(h => String(h.e.employeeId)));
-    hits.forEach(({ mp, e }) => {      const prog = +e.completionSchedule || 0;
+    hits.forEach(({ mp, e }, hi) => {      const prog = +e.completionSchedule || 0;
       const mtasks = [];
       const rec = dmEmps[String(e.employeeId)];
       const mrec = rec && (rec.maps || []).find(m => String(m.mapId) === String(mp.mapId));
       if (mrec && (mrec.stages || []).length) {
+        /* 只有路径最后一环（晋升到提报职位的考核）才算"待培训部安排考核"；前面地图的晋升考核直接忽略（10/15 朱骏锋纠偏） */
+        const isGateMap = hi === hits.length - 1;
         let examPending = false;
         mrec.stages.forEach(st => (st.tasks || []).forEach(t => {
           const tn = t.taskName || "?";
-          if (/晋升考核/.test(tn)) { if (String(t.status) !== "3") examPending = true; return; } /* 晋升考核≠员工未学，红字明细不列；但未考完地图不判✅ */
+          if (/晋升.*考核/.test(tn)) { if (isGateMap && String(t.status) !== "3") examPending = true; return; } /* 晋升考核/晋升初级师傅考核 等均≠员工未学 */
           if (String(t.status) !== "3") mtasks.push(esc((st.stageName || "") + "：" + tn + "（未完成）"));
           else {
             const sc = parseFloat(t.realScore);
