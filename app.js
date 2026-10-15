@@ -2590,7 +2590,8 @@ window.sharePng = async function (mode) {
       }
       if (typeof PS_ROWS !== "undefined") PS_ROWS = rows;
       window.PS_ROWS = rows;
-      psTable(rows);
+      psFillMonths();
+      psApply();
     } catch (e) {
       box.innerHTML = `<div style="color:#A32D2D;font-size:13px;padding:14px 0">名单加载失败：${esc(e.message || String(e))}<br><span style="color:#7a8399">本机到 Supabase 的网络（代理）可能不通，请检查代理节点后刷新重试；报名数据本身不受影响。</span></div>`;
     }
@@ -2845,14 +2846,86 @@ window.sharePng = async function (mode) {
         来源 = 店长在报名链接（<a href="signup.html" target="_blank" style="color:#185FA5">signup.html</a>）提交的提报，实时读取；本页可补录、修改、删除。<br>
         本页签<b>仅在你的电脑上出现</b>（检测到本机看板管家服务才显示），其他设备打开同一看板链接看不到、也无法操作。
       </div>
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
         <button class="btn" style="padding:7px 18px" onclick="psAdd()">＋ 新增提报</button>
         <button class="btn" style="padding:7px 18px;background:var(--line);color:var(--t1)" onclick="psLoad()">↻ 刷新</button>
+        <select id="psMonth" onchange="psApply()" style="padding:6px 10px;font-size:13px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--t1)"></select>
+        <button class="btn" style="padding:7px 18px;background:#185FA5;color:#fff" onclick="psRosterPick()">📋 晋升名单</button>
         <span id="psErr" style="color:#A32D2D;font-size:12.5px"></span>
       </div>
       <div id="psList"></div>
     </div>`;
     psLoad();
+  }
+  /* 月份筛选 + 晋升名单（2026-10-15 Rain） */
+  window.psApply = function () {
+    if (window.PS_MODE === "roster") { psRosterShow(); return; }
+    const m = (document.getElementById("psMonth") || {}).value || "";
+    const rows = (window.PS_ROWS || []).filter(r => psMonthOf(r.time) === m || !m);
+    psTable(rows);
+  };
+  function psMonthOf(t) {
+    const d = new Date(+t || t);
+    return isNaN(d) ? "" : d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+  function psFillMonths() {
+    const sel = document.getElementById("psMonth");
+    if (!sel) return;
+    const cur = sel.value;
+    const months = [...new Set((window.PS_ROWS || []).map(r => psMonthOf(r.time)).filter(Boolean))].sort().reverse();
+    sel.innerHTML = `<option value="">全部月份</option>` + months.map(m => `<option value="${m}">${m}</option>`).join("");
+    if (cur) sel.value = cur; else if (months.length) sel.value = months[0];
+  }
+  window.psRosterPick = function () {
+    const m = (document.getElementById("psMonth") || {}).value || "";
+    const rows = (window.PS_ROWS || []).filter(r => psMonthOf(r.time) === m || !m);
+    if (!rows.length) { psErr("当前筛选月份没有提报记录"); return; }
+    psErr("");
+    const seen = new Set();
+    const ppl = [];
+    rows.forEach(r => {
+      const p = parseName(r.name);
+      const k = psNorm(p.name) + "@" + psNorm(r.store);
+      if (!p.name || seen.has(k)) return;
+      seen.add(k);
+      ppl.push({ id: r.id, name: p.name, store: r.store || "—", pos: p.pos || "—", month: psMonthOf(r.time) });
+    });
+    const ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;background:rgba(20,25,40,.45);z-index:9998;display:flex;align-items:center;justify-content:center";
+    ov.innerHTML = `<div style="background:var(--card,#fff);border-radius:12px;padding:18px 20px;min-width:340px;max-width:440px;max-height:75vh;overflow:auto">
+      <b style="font-size:14px">选择晋升名单人员</b>
+      <div style="font-size:12px;color:#7a8399;margin:4px 0 10px">提报月份默认取当前筛选月份${m ? "（" + m + "）" : "（全部）"}</div>
+      ${ppl.map((p, i) => `<label style="display:flex;gap:8px;align-items:center;padding:5px 2px;font-size:13px;cursor:pointer">
+        <input type="checkbox" class="psRosterCk" value="${p.id}" ${i === 0 ? "" : ""}>
+        <span>${esc(p.name)} <span style="color:#7a8399">· ${esc(p.store)} · ${esc(p.pos)}</span></span></label>`).join("")}
+      <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end">
+        <button class="btn" style="padding:6px 16px;background:var(--line);color:var(--t1)" onclick="this.closest('div[position]').parentNode.remove()">取消</button>
+        <button class="btn" style="padding:6px 16px;background:#185FA5;color:#fff" id="psRosterOk">确定</button>
+      </div></div>`;
+    ov.setAttribute("position", "fixed");
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+    ov.querySelector("#psRosterOk").onclick = () => {
+      const ids = new Set([...ov.querySelectorAll(".psRosterCk:checked")].map(c => c.value));
+      ov.remove();
+      if (!ids.size) { psErr("未勾选任何人员"); return; }
+      window.PS_ROSTER = ppl.filter(p => ids.has(String(p.id)));
+      window.PS_MODE = "roster";
+      psRosterShow();
+    };
+  };
+  function psRosterShow() {
+    const box = document.getElementById("psList");
+    if (!box) return;
+    const list = window.PS_ROSTER || [];
+    const m = (document.getElementById("psMonth") || {}).value || "";
+    box.innerHTML = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        <b style="font-size:13.5px">📋 晋升名单（${list.length} 人）</b>
+        <button class="btn" style="padding:4px 14px;font-size:12.5px;background:var(--line);color:var(--t1)" onclick="window.PS_MODE='';psApply()">← 返回报名名单</button>
+      </div>
+      <table><tr><th>姓名</th><th>门店</th><th>提报月份</th><th>晋升职位</th></tr>` +
+      list.map(p => `<tr><td>${esc(p.name)}</td><td>${esc(p.store)}</td><td>${esc(m || p.month)}</td><td>${esc(p.pos)}</td></tr>`).join("") +
+      `</table>`;
   }
   window.renderPromoSignup = renderPromoSignup;
 })();
