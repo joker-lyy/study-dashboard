@@ -2406,7 +2406,7 @@ window.sharePng = async function (mode) {
     ".drcard .hv{font-size:12.5px;font-weight:500;margin-top:1px}" +
     ".drcard .hv.nw{white-space:nowrap}" +
     ".drcard table{width:100%;border-collapse:collapse;table-layout:fixed}" +
-    ".drcard th,.drcard td{border:1px solid #e2e5ec;padding:5px 9px;font-size:12px;vertical-align:top;text-align:left}" +
+    ".drcard th,.drcard td{border:1px solid #e2e5ec;padding:5px 9px;font-size:12px;vertical-align:top;text-align:left;white-space:normal;word-break:break-all}" +
     ".drcard th{background:#f3f5f9;font-weight:500}" +
     ".drcard .stg{font-weight:500;font-size:12px}" +
     ".drcard .li{display:flex;justify-content:space-between;gap:8px;padding:1px 0}" +
