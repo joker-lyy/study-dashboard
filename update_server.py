@@ -140,7 +140,19 @@ def _promo_proxy(method, qs, body=None):
         except Exception:
             return e.code, {"ok": False, "msg": "HTTP %s" % e.code}
     except Exception as e:
-        return 502, {"ok": False, "msg": str(e)}
+        # 系统代理失败 → 直连兜底（两条路总有一条通）
+        try:
+            op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with op.open(req, timeout=20) as r:
+                txt = r.read().decode("utf-8")
+                return r.status, (json.loads(txt) if txt else [])
+        except urllib.error.HTTPError as e2:
+            try:
+                return e2.code, json.loads(e2.read().decode("utf-8"))
+            except Exception:
+                return e2.code, {"ok": False, "msg": "HTTP %s" % e2.code}
+        except Exception as e2:
+            return 502, {"ok": False, "msg": "proxy:%s direct:%s" % (e, e2)}
 
 
 def _butler_alive():

@@ -8,6 +8,7 @@
 import json
 import os
 import sys
+import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -19,6 +20,29 @@ DRY = "--dry" in sys.argv
 
 def _open(req, timeout=25):
     return urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8")
+
+
+_NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def fetch_signup_rows(last_ts):
+    """取 time>last_ts 的新提报。优先走本机 8767 管家代理（supabase service key 在服务端，
+    本机直连/系统代理到 supabase 长期被 TLS 重置）；失败再降级直连 supabase。"""
+    try:
+        txt = _NO_PROXY.open("http://localhost:8767/api/promo_records", timeout=15).read().decode("utf-8")
+        j = json.loads(txt)
+        if j.get("ok"):
+            rows = j.get("rows") or []
+            rows = [r for r in rows if int(r.get("time") or 0) > last_ts]
+            rows.sort(key=lambda r: int(r.get("time") or 0))
+            print("[promo-notify] 经 8767 代理取到 %d 条新提报" % len(rows))
+            return rows
+        print("[promo-notify] 8767 代理返回失败:", j.get("msg"))
+    except Exception as e:
+        print("[promo-notify] 8767 代理不可用:", e)
+    q = "%s/rest/v1/puzzle_records?game=eq.promo_signup&time=gt.%d&order=time.asc&limit=50" % (SUPABASE_URL, last_ts)
+    req = urllib.request.Request(q, headers={"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY})
+    return json.loads(_open(req) or "[]")
 
 
 def norm(s):
@@ -117,10 +141,12 @@ def main():
             last_ts = json.load(open(state_path, encoding="utf-8")).get("lastTs") or 0
         except Exception:
             pass
+    else:
+        # 首次运行（断点文件缺失）：从当前时间起算，避免把全部历史提报推爆（历史名单已在管理页看过）
+        last_ts = int(time.time() * 1000)
+        print("[promo-notify] 断点缺失，首次运行从 now=%d 起算" % last_ts)
 
-    q = "%s/rest/v1/puzzle_records?game=eq.promo_signup&time=gt.%d&order=time.asc&limit=50" % (SUPABASE_URL, last_ts)
-    req = urllib.request.Request(q, headers={"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY})
-    rows = json.loads(_open(req) or "[]")
+    rows = fetch_signup_rows(last_ts)
     rows = [r for r in rows if "测试" not in (r.get("store") or "")]
     if not rows:
         print("[promo-notify] 无新提报")
