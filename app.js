@@ -2924,10 +2924,47 @@ window.sharePng = async function (mode) {
     box.innerHTML = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
         <b style="font-size:13.5px">📋 晋升名单（${list.length} 人）</b>
         <button class="btn" style="padding:4px 14px;font-size:12.5px;background:var(--line);color:var(--t1)" onclick="window.PS_MODE='';psApply()">← 返回报名名单</button>
+        <button class="btn" style="padding:4px 14px;font-size:12.5px" onclick="psRosterShot(this)">🖼 快照</button>
       </div>
-      <table><tr><th>姓名</th><th>门店</th><th>提报月份</th><th>晋升职位</th></tr>` +
+      <table id="psRosterTable"><tr><th>姓名</th><th>门店</th><th>提报月份</th><th>晋升职位</th></tr>` +
       list.map(p => `<tr><td>${esc(p.name)}</td><td>${esc(p.store)}</td><td>${esc(m || p.month)}</td><td>${esc(p.pos)}</td></tr>`).join("") +
       `</table>`;
   }
+  // 晋升名单整表快照（含表头）→ html2canvas 出图 → 复制剪贴板
+  window.psRosterShot = async function (btn) {
+    const t0 = document.getElementById("psRosterTable");
+    if (!t0 || btn.disabled) return;
+    const old = btn.textContent; btn.textContent = "⏳ 生成中…"; btn.disabled = true;
+    const showTip = html => {
+      let ov = document.getElementById("pngShareTip");
+      if (!ov) { ov = document.createElement("div"); ov.id = "pngShareTip"; ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100001;display:flex;align-items:center;justify-content:center;padding:24px"; document.body.appendChild(ov); }
+      ov.onclick = e => { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:720px;width:100%;padding:18px 20px;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">${html}</div>`;
+      return ov;
+    };
+    try {
+      await window._loadHtml2canvas();
+      const t = t0.cloneNode(true);
+      const holder = document.createElement("div");
+      holder.style.cssText = "position:fixed;left:0;top:0;z-index:-1;background:#ffffff;padding:14px;opacity:1;pointer-events:none";
+      holder.appendChild(t);
+      t.style.borderCollapse = "collapse";
+      document.body.appendChild(holder);
+      try {
+        const cv = await html2canvas(t, { backgroundColor: "#ffffff", scale: 2, logging: false });
+        const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+        const dataUrl = cv.toDataURL("image/png");
+        let copied = false;
+        try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
+        showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">${copied ? "✅ 图片已复制" : "🖼 图片已生成"}</div>
+          <div style="font-size:12px;color:#7a8399;margin-bottom:10px">${copied ? "直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送。" : "浏览器未自动复制（剪贴板权限受限），可右键图片复制或保存后转发。"}</div>
+          <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+            <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
+          </div>`);
+      } finally { holder.remove(); }
+    } catch (e) { alert("生成图片失败：" + (e && e.message || e)); }
+    btn.textContent = old; btn.disabled = false;
+  };
   window.renderPromoSignup = renderPromoSignup;
 })();
