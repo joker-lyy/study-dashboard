@@ -2299,7 +2299,7 @@ window.sharePng = async function (mode) {
 
 // ============ 门店学习日报（2026-10-15 Rain）：二级汇总「📄 日报」按钮 ============
 // 版式 = 22:20 夜间快照的竖版「门店学习报表」（_night_snapshot.js buildStoreHtml 同源）；
-// 差异：实时读页面 data、门店可勾选、卡片在页内预览并可逐张下载 PNG（html2canvas）。
+// 差异：实时读页面 data、门店可勾选、卡片在页内预览并可逐张快照复制（html2canvas，同 sharePng 体验）。
 (function () {
   const DR_COURSE = new Set([1, 2, 7, 8, 10]); // 课程学习=课件/文件+视频（含表单，与夜间报表同口径）
   const DR_EXAM = new Set([4]);
@@ -2471,7 +2471,7 @@ window.sharePng = async function (mode) {
       <div style="background:#eef1f6;border-radius:12px;max-width:96vw;width:1460px;max-height:92vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
         <div style="padding:12px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #dde2ec;background:#fff;border-radius:12px 12px 0 0">
           <b style="font-size:14px;color:#1A2A4A">📄 门店学习日报（${picked.length} 家）</b>
-          <span style="font-size:12px;color:#7a8399">每张卡片可单独下载 PNG 发群</span>
+          <span style="font-size:12px;color:#7a8399">点「快照」图片自动复制，聊天窗口 Ctrl+V 直接发</span>
           <span style="flex:1"></span>
           <button onclick="openDailyReport()" style="background:#f0f2f7;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px">← 重选门店</button>
           <button onclick="document.getElementById('dailyReportOv').remove()" style="background:#f0f2f7;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px">关闭</button>
@@ -2480,25 +2480,58 @@ window.sharePng = async function (mode) {
           ${picked.map((s, i) => {
       const card = drStoreCardHtml(p, s, byStore.get(s) || [], genAt);
       return `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
-              <button onclick="drDownload(${i})" style="background:#2f54eb;color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:12px">⬇ 下载「${esc(s)}」图片</button>
+              <button onclick="drSnap(${i})" style="background:#2f54eb;color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:12px">📸 快照「${esc(s)}」</button>
               <div id="drCard${i}">${card}</div></div>`;
     }).join("")}
         </div></div>`;
     try { await window._loadHtml2canvas(); } catch (e) { /* 下载时再试一次 */ }
   };
-  window.drDownload = async function (i) {
+  // 快照（与页内「🖼 快照」同款体验）：html2canvas 出图 → 复制剪贴板 → 弹预览（可重试复制）
+  window.drSnap = async function (i) {
     const el = document.getElementById("drCard" + i);
     if (!el) return;
     const btn = el.parentElement.querySelector("button");
     const old = btn.textContent; btn.textContent = "⏳ 生成中…"; btn.disabled = true;
+    const showTip = html => {
+      let ov = document.getElementById("pngShareTip");
+      if (!ov) { ov = document.createElement("div"); ov.id = "pngShareTip"; ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100001;display:flex;align-items:center;justify-content:center;padding:24px"; document.body.appendChild(ov); }
+      ov.onclick = e => { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:640px;width:100%;padding:18px 20px;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">${html}</div>`;
+      return ov;
+    };
     try {
       await window._loadHtml2canvas();
       const cv = await html2canvas(el.firstElementChild, { backgroundColor: "#ffffff", scale: 2, logging: false });
-      const a = document.createElement("a");
+      const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+      const dataUrl = cv.toDataURL("image/png");
       const storeName = el.querySelector(".hcell .hv").textContent.trim();
-      a.download = storeName.replace(/[\\/:*?"<>|]/g, "_") + "-门店学习报表.png";
-      a.href = cv.toDataURL("image/png");
-      a.click();
+      const fname = storeName.replace(/[\\/:*?"<>|]/g, "_") + "-门店学习报表.png";
+      let copied = false;
+      try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
+      if (copied) {
+        showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">✅ 「${esc(storeName)}」图片已复制</div>
+          <div style="font-size:12px;color:#7a8399;margin-bottom:10px">直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送，无需保存文件。</div>
+          <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+            <button id="drCopyBtn" onclick="_drCopyRetry()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">重新复制</button>
+            <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
+          </div>`);
+      } else {
+        showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">🖼 图片已生成</div>
+          <div style="font-size:12px;color:#7a8399;margin-bottom:10px">浏览器未自动复制（剪贴板权限受限）。可点「复制图片」重试，或长按/右键图片保存后转发。</div>
+          <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+            <button id="drCopyBtn" onclick="_drCopyRetry()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">复制图片</button>
+            <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
+          </div>`);
+      }
+      window._drCopyRetry = async () => {
+        let ok = false;
+        try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); ok = true; } catch (e) {}
+        const b = document.getElementById("drCopyBtn");
+        if (b) b.textContent = ok ? "✅ 已复制，去聊天窗口粘贴" : "复制失败，请右键图片保存";
+        if (ok) setTimeout(() => { const t = document.getElementById("pngShareTip"); if (t) t.remove(); }, 1500);
+      };
       btn.textContent = old;
     } catch (e) { alert("生成图片失败：" + (e && e.message || e)); btn.textContent = old; }
     btn.disabled = false;
