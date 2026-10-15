@@ -2611,21 +2611,29 @@ window.sharePng = async function (mode) {
   function psNorm(s) { return String(s || "").replace(/ /g, "").replace(/\u3000/g, "").trim(); }
   function psMapRank(n) {
     n = n || "";
-    if (/初级学徒|学徒学习地图|转正/.test(n)) return 0;
-    if (/初级师傅/.test(n)) return 1;
-    if (/中级师傅/.test(n)) return 2;
-    if (/星级师傅/.test(n)) return 3;
-    if (/店长/.test(n)) return 4;
+    if (/初级学徒|转正/.test(n)) return 0;
+    if (/学徒/.test(n)) return 1;
+    if (/初级师傅/.test(n)) return 2;
+    if (/中级师傅/.test(n)) return 3;
+    if (/星级师傅/.test(n)) return 4;
+    if (/初级店长/.test(n)) return 5;
+    if (/店长/.test(n)) return 6;
+    if (/资深店长/.test(n)) return 7;
     return 99; // 未识别名称的晋升地图一并计入
   }
   function psPosRank(p) {
     p = p || "";
-    if (/初级师傅/.test(p)) return 1;
-    if (/中级师傅/.test(p)) return 2;
-    if (/星级师傅/.test(p)) return 3;
-    if (/店长/.test(p)) return 4;
+    if (/初级学徒|转正/.test(p)) return 0;
+    if (/学徒/.test(p)) return 1;
+    if (/初级师傅/.test(p)) return 2;
+    if (/中级师傅/.test(p)) return 3;
+    if (/星级师傅/.test(p)) return 4;
+    if (/初级店长/.test(p)) return 5;
+    if (/店长/.test(p)) return 6;
+    if (/资深店长/.test(p)) return 7;
     return 99; // 职位未识别 → 全部地图都算
   }
+  const PS_PATH = ["初级学徒", "学徒", "初级师傅", "中级师傅", "星级师傅", "初级店长", "店长", "资深店长"];
   function psJudge(store, name, pos) {
     if (!name) return { cls: "na", mapHtml: `<span style="color:#9aa1af">—</span>`, asgHtml: `<span style="color:#9aa1af">—</span>` };
     const sN = psNorm(store), nN = psNorm(name), R = psPosRank(pos);
@@ -2633,23 +2641,24 @@ window.sharePng = async function (mode) {
     (DATA.maps || []).forEach(mp => {
       if ((mp.categoryName || "") !== "晋升") return;
       const r = psMapRank(mp.mapName || "");
-      if (r <= R) (mp.emps || []).forEach(e => {
+      // 晋升到某职位 = 之前层级（不含本职位）的全部地图都需完成（2026-10-15 Rain 定稿：晋升中级师傅→学到初级师傅即可）
+      if (r < R) (mp.emps || []).forEach(e => {
         if (psNorm(e.employeeName) !== nN) return;
         const es = psNorm(e.storeName || "");
         if (!es || (es !== sN && sN.indexOf(es) < 0 && es.indexOf(sN) < 0)) return;
-        hits.push({ mp, e });
+        hits.push({ mp, e, r });
       });
     });
     if (!hits.length) return { cls: "na",
       mapHtml: `<span style="color:#9aa1af">未在学习地图匹配到该员工（核对姓名/门店；或该员工尚未派发晋升地图）</span>`,
       asgHtml: `<span style="color:#9aa1af">—</span>` };
-    hits.sort((a, b) => (+b.e.completionSchedule || 0) - (+a.e.completionSchedule || 0));
+    // 按晋升路径排序：初级学徒→学徒→初级师傅→中级师傅→星级师傅→初级店长→店长→资深店长
+    hits.sort((a, b) => (a.r - b.r) || ((+b.e.completionSchedule || 0) - (+a.e.completionSchedule || 0)));
     const dmEmps = (DATA.directMaps || {}).emps || {};
     let allDone = true;
     const mapSegs = [], taskLines = [];
     const empIds = new Set(hits.map(h => String(h.e.employeeId)));
-    hits.forEach(({ mp, e }) => {
-      const prog = +e.completionSchedule || 0;
+    hits.forEach(({ mp, e }) => {      const prog = +e.completionSchedule || 0;
       let seg = `<b>${esc(mp.mapName || "")}</b> 进度 ${prog.toFixed(0)}% ${prog >= 100 ? "✅" : "❌"}`;
       if (e.stageName && e.stageName !== "-") seg += `（当前阶段：${esc(e.stageName)}）`;
       if (prog < 100) allDone = false;
@@ -2671,37 +2680,37 @@ window.sharePng = async function (mode) {
       if (mtasks.length) { allDone = false; seg += `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${mtasks.join("<br>")}</div>`; }
       mapSegs.push(seg);
     });
-    /* 指派学习任务 = 「线上线下培训」类计划派发给该员工的任务（2026-10-15 Rain 口径） */
-    const asgLines = [];
+    /* 学习任务学习 = 「线上线下培训」类计划派发给该员工的学习情况：按计划列 已学/应学（2026-10-15 Rain 定稿，不列明细） */
+    const asgSegs = [];
     (DATA.plans || []).forEach(p => {
       if ((p.category || p.categoryName || "") !== "线上线下培训") return;
       const pe = (p.emps || []).find(x => empIds.has(String(x.employeeId)) ||
         (psNorm(x.empName) === nN && (() => { const xs = psNorm(x.storeNames || ""); return xs && (xs === sN || sN.indexOf(xs) >= 0 || xs.indexOf(sN) >= 0); })()));
       if (!pe) return;
       const det = p.empDetails && p.empDetails[String(pe.employeeId)];
+      let line;
       if (det && det.stages) {
-        det.stages.forEach(s => (s.t || []).forEach(t => {
-          const tn = esc(t[0] || "?");
-          if (t[2] !== "W") asgLines.push(esc(p.planName || "") + "：" + tn + (t[2] === "DYJ" || t[4] === "待阅卷" ? "（待审核）" : "（未完成）"));
-          else {
-            const sc = parseFloat(t[3]);
-            if (!isNaN(sc) && (sc < 80 || t[4] === "否")) asgLines.push(esc(p.planName || "") + "：" + tn + " " + sc + "分（未达标）");
-          }
-        }));
-      } else if (pe.trainingStatus !== 2) {
-        asgLines.push(esc(p.planName || "") + "：整体未完成");
+        const ts = det.stages.reduce((a, s) => a.concat(s.t || []), []);
+        const done = ts.filter(t => t[2] === "W").length;
+        const ok = ts.length > 0 && done >= ts.length;
+        if (!ok) allDone = false;
+        line = `<b>${esc(p.planName || "")}</b> 已学 ${done}/${ts.length} ${ok ? "✅" : "❌"}`;
+      } else {
+        const ok = pe.trainingStatus === 2;
+        if (!ok) allDone = false;
+        line = `<b>${esc(p.planName || "")}</b> ${ok ? "已完成 ✅" : "整体未完成 ❌"}`;
       }
+      asgSegs.push(line);
     });
-    const taskSeg = asgLines.length
-      ? `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${asgLines.join("<br>")}</div>`
-      : `<div style="color:#3B6D11;font-size:12px;margin-top:2px">全部完成 ✅</div>`;
-    if (asgLines.length) allDone = false;
+    const asgHtml = asgSegs.length
+      ? `<div style="font-size:12px;display:flex;flex-direction:column;gap:6px">${asgSegs.join("")}</div>`
+      : `<span style="color:#9aa1af">暂无派发的学习任务</span>`;
     const verdict = allDone
       ? `<span style="color:#3B6D11;font-weight:600">符合晋升条件 ✅</span>`
       : `<span style="color:#A32D2D;font-weight:600">不符合晋升条件 ❌</span>`;
     return { cls: allDone ? "ok" : "bad",
       mapHtml: `${verdict}<div style="font-size:12px;display:flex;flex-direction:column;gap:6px;margin-top:6px">${mapSegs.join("")}</div>`,
-      asgHtml: `<div style="font-size:11px;color:${asgLines.length ? "#A32D2D" : "#3B6D11"};font-weight:600;margin-bottom:3px">${asgLines.length ? "未完成 " + asgLines.length + " 项 ❌" : "全部完成 ✅"}</div>${taskSeg}` };
+      asgHtml };
   }
 
   function psForm(title, rec) {
