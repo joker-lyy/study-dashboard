@@ -1196,6 +1196,8 @@ function renderPromo() {
   const el = document.getElementById("main");
   const maps = DATA.maps || [];
   if (state.promoSub === "培训计划") { state.cat = state.tab; renderCat(); return; }
+  if (state.promoSub === "晋升报名" && !window._localSvc) state.promoSub = "学习地图"; // 非本机打开一律回退
+  if (state.promoSub === "晋升报名") { renderPromoSignup(); return; }
   if (!maps.length) { el.innerHTML = `<div class="sec empty">暂无学习地图数据，请先运行 fetch_study.py 更新</div>`; return; }
   state.promoMapIdx = Math.min(state.promoMapIdx, maps.length - 1);
   const mp = maps[state.promoMapIdx];
@@ -2025,7 +2027,8 @@ function render() {
   if (state.tab === "员工培训/晋升") {
     bar.style.display = "flex";
     bar.innerHTML = `<button class="${state.promoSub === "学习地图" ? "active" : ""}" onclick="state.promoSub='学习地图';state.promoMapIdx=0;render()">学习地图（晋升阶梯）</button>
-      <button class="${state.promoSub === "培训计划" ? "active" : ""}" onclick="state.promoSub='培训计划';render()">晋升培训计划</button>`;
+      <button class="${state.promoSub === "培训计划" ? "active" : ""}" onclick="state.promoSub='培训计划';render()">晋升培训计划</button>` +
+      (window._localSvc ? `<button class="${state.promoSub === "晋升报名" ? "active" : ""}" onclick="state.promoSub='晋升报名';render()">晋升报名管理</button>` : "");
   } else bar.style.display = "none";
   // 直营数据独立时间控制（state.dRange 自有「全部/本月数据/上月数据」按钮，不受看板全局筛选影响）：
   // 直营页隐藏全局时间条，避免误以为全局条能控制直营数据（9/19 用户拍板）
@@ -2539,4 +2542,139 @@ window.sharePng = async function (mode) {
     } catch (e) { alert("生成图片失败：" + (e && e.message || e)); btn.textContent = old; }
     btn.disabled = false;
   };
+})();
+
+// ============ 晋升报名管理（2026-10-15 Rain）：子页签仅本机可见 ============
+// 本机判定复用更新按钮 fix220 模式：探测 8767 看板管家 /ping，可达才显示「晋升报名管理」子页签；
+// 其他电脑打开同一链接：无本机服务 → 页签不出现、分享链接带 promoSub=晋升报名 也会被强制回退。
+// 数据 = Supabase puzzle_records（game=promo_signup，与 signup.html 报名页同源），本页可增/改/删。
+(function () {
+  const SB_URL = "https://furiqmhvflnjllrwfhyw.supabase.co/rest/v1/puzzle_records";
+  const SB_KEY = "sb_publishable_bMQvqugXZvjgs9w5y_2ZJA_LETBEnjO";
+  const DIRECT_STORES = ["广州佳润广场店","广州天河正佳广场店","广州海珠同创店","中山康华店","中山利和店","中山悦盈店","中山黄圃店","中山远洋城店"];
+  const POSITIONS = ["初级师傅","中级师傅","星级师傅","初级店长"];
+  const sbHeaders = () => ({ "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" });
+  const fmtT = ts => { const n = +ts; if (!n) return "—"; const d = new Date(n); const p = x => String(x).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()); };
+  const parseName = raw => { try { const o = JSON.parse(raw); return { name: o.name || "", pos: o.position || "" }; } catch (e) { return { name: String(raw || ""), pos: "" }; } };
+
+  // 本机服务探测（页面加载后异步进行，最多重试 5 次；探测成功即刷新页签）
+  let tried = 0;
+  function probeLocal() {
+    tried++;
+    fetch("http://localhost:8767/ping", { cache: "no-store" }).then(r => r.json()).then(j => {
+      if (j && j.ok && !window._localSvc) { window._localSvc = true; if (state.tab === "员工培训/晋升") render(); }
+    }).catch(() => { if (tried < 5) setTimeout(probeLocal, 2500); });
+  }
+  probeLocal();
+
+  function psErr(msg) {
+    const el = document.getElementById("psErr");
+    if (el) el.textContent = msg;
+  }
+
+  async function psLoad() {
+    const box = document.getElementById("psList");
+    if (!box) return;
+    box.innerHTML = `<div style="color:#7a8399;font-size:13px;padding:14px 0">加载中…</div>`;
+    try {
+      const r = await fetch(SB_URL + "?game=eq.promo_signup&select=id,store,name,time,errors&order=time.desc&limit=200", { headers: sbHeaders() });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const rows = await r.json();
+      if (typeof PS_ROWS !== "undefined") PS_ROWS = rows;
+      window.PS_ROWS = rows;
+      psTable(rows);
+    } catch (e) {
+      box.innerHTML = `<div style="color:#A32D2D;font-size:13px;padding:14px 0">名单加载失败：${esc(e.message || String(e))}<br><span style="color:#7a8399">本机到 Supabase 的网络（代理）可能不通，请检查代理节点后刷新重试；报名数据本身不受影响。</span></div>`;
+    }
+  }
+
+  function psTable(rows) {
+    const box = document.getElementById("psList");
+    if (!box) return;
+    if (!rows.length) { box.innerHTML = `<div style="color:#7a8399;font-size:13px;padding:14px 0">暂无提报记录（店长提交后自动出现在这里）</div>`; return; }
+    box.innerHTML = `<table><tr><th>提报时间</th><th>门店</th><th>姓名</th><th>提报职位</th><th style="width:120px">操作</th></tr>` +
+      rows.map(r => {
+        const p = parseName(r.name);
+        return `<tr><td>${fmtT(r.time)}</td><td>${esc(r.store || "—")}</td><td>${esc(p.name)}</td><td>${esc(p.pos || "—")}</td>
+          <td><button class="btn" style="padding:3px 10px;font-size:12px" onclick="psEdit('${r.id}')">编辑</button>
+          <button class="btn" style="padding:3px 10px;font-size:12px;background:#fdecec;color:#A32D2D" onclick="psDel('${r.id}')">删除</button></td></tr>`;
+      }).join("") + `</table>`;
+  }
+
+  function psForm(title, rec) {
+    const p = rec ? parseName(rec.name) : { name: "", pos: "" };
+    let ov = document.getElementById("psFormOv");
+    if (ov) ov.remove();
+    ov = document.createElement("div"); ov.id = "psFormOv";
+    ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;display:flex;align-items:center;justify-content:center";
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `<div style="background:#fff;border-radius:12px;width:400px;max-width:92vw;padding:20px" onclick="event.stopPropagation()">
+      <b style="font-size:15px;color:#1A2A4A">${esc(title)}</b>
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px;font-size:13px">
+        <label>门店<select id="psStore" style="margin-top:4px;width:100%;padding:9px;border:1px solid #E6E9F0;border-radius:8px">${DIRECT_STORES.map(s => `<option ${rec && rec.store === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>
+        <label>姓名<input id="psName" value="${esc(p.name)}" style="margin-top:4px;width:100%;padding:9px;border:1px solid #E6E9F0;border-radius:8px" /></label>
+        <label>提报职位<select id="psPos" style="margin-top:4px;width:100%;padding:9px;border:1px solid #E6E9F0;border-radius:8px">${POSITIONS.map(s => `<option ${p.pos === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>
+      </div>
+      <div id="psFormErr" style="color:#A32D2D;font-size:12px;margin-top:8px;min-height:16px"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px">
+        <button onclick="document.getElementById('psFormOv').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">取消</button>
+        <button id="psSaveBtn" style="background:#2f54eb;color:#fff;border:none;border-radius:8px;padding:8px 22px;cursor:pointer;font-size:13px">保存</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    document.getElementById("psSaveBtn").onclick = async () => {
+      const store = document.getElementById("psStore").value;
+      const name = document.getElementById("psName").value.trim();
+      const pos = document.getElementById("psPos").value;
+      const errEl = document.getElementById("psFormErr");
+      if (!name) { errEl.textContent = "请填写姓名"; return; }
+      const btn2 = document.getElementById("psSaveBtn");
+      btn2.disabled = true; btn2.textContent = "保存中…";
+      try {
+        let r;
+        if (rec) {
+          r = await fetch(SB_URL + "?id=eq." + rec.id, { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ store, name: JSON.stringify({ name, position: pos }) }) });
+        } else {
+          r = await fetch(SB_URL, { method: "POST", headers: sbHeaders(), body: JSON.stringify({ game: "promo_signup", store, time: Date.now(), errors: 0, name: JSON.stringify({ name, position: pos }) }) });
+        }
+        if (!r.ok) { const t = await r.text(); throw new Error("HTTP " + r.status + " " + t.slice(0, 120)); }
+        ov.remove(); psErr(""); psLoad();
+      } catch (e) {
+        btn2.disabled = false; btn2.textContent = "保存";
+        errEl.textContent = "保存失败：" + (e.message || e) + "（本机到 Supabase 网络可能不通）";
+      }
+    };
+  }
+
+  window.psAdd = function () { psForm("新增提报", null); };
+  window.psEdit = function (id) {
+    const rec = (window.PS_ROWS || []).find(r => String(r.id) === String(id));
+    if (rec) psForm("编辑提报", rec);
+  };
+  window.psDel = async function (id) {
+    if (!confirm("确定删除这条提报记录？删除后不可恢复。")) return;
+    try {
+      const r = await fetch(SB_URL + "?id=eq." + id, { method: "DELETE", headers: sbHeaders() });
+      if (!r.ok) { const t = await r.text(); throw new Error("HTTP " + r.status + " " + t.slice(0, 120)); }
+      psErr(""); psLoad();
+    } catch (e) { psErr("删除失败：" + (e.message || e)); }
+  };
+
+  function renderPromoSignup() {
+    const el = document.getElementById("main");
+    el.innerHTML = `<div class="sec">
+      <h3>晋升报名管理 <span class="badge b-blue">本机专用</span></h3>
+      <div style="font-size:12.5px;color:#7a8399;line-height:1.8;margin-bottom:10px">
+        来源 = 店长在报名链接（<a href="signup.html" target="_blank" style="color:#185FA5">signup.html</a>）提交的提报，实时读取；本页可补录、修改、删除。<br>
+        本页签<b>仅在你的电脑上出现</b>（检测到本机看板管家服务才显示），其他设备打开同一看板链接看不到、也无法操作。
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        <button class="btn" style="padding:7px 18px" onclick="psAdd()">＋ 新增提报</button>
+        <button class="btn" style="padding:7px 18px;background:var(--line);color:var(--t1)" onclick="psLoad()">↻ 刷新</button>
+        <span id="psErr" style="color:#A32D2D;font-size:12.5px"></span>
+      </div>
+      <div id="psList"></div>
+    </div>`;
+    psLoad();
+  }
+  window.renderPromoSignup = renderPromoSignup;
 })();
