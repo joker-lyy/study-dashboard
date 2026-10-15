@@ -2659,25 +2659,26 @@ window.sharePng = async function (mode) {
     const mapSegs = [], taskLines = [];
     const empIds = new Set(hits.map(h => String(h.e.employeeId)));
     hits.forEach(({ mp, e }) => {      const prog = +e.completionSchedule || 0;
-      let seg = `<b>${esc(mp.mapName || "")}</b> 进度 ${prog.toFixed(0)}% ${prog >= 100 ? "✅" : "❌"}`;
-      if (e.stageName && e.stageName !== "-") seg += `（当前阶段：${esc(e.stageName)}）`;
-      if (prog < 100) allDone = false;
       const mtasks = [];
       const rec = dmEmps[String(e.employeeId)];
       const mrec = rec && (rec.maps || []).find(m => String(m.mapId) === String(mp.mapId));
       if (mrec && (mrec.stages || []).length) {
         mrec.stages.forEach(st => (st.tasks || []).forEach(t => {
           const tn = t.taskName || "?";
+          if (/晋升考核/.test(tn)) return; /* 晋升考核=培训部派人考核，不算员工未完成（2026-10-15 Rain） */
           if (String(t.status) !== "3") mtasks.push(esc((st.stageName || "") + "：" + tn + "（未完成）"));
           else {
             const sc = parseFloat(t.realScore);
             if (!isNaN(sc) && sc < 80 && /考核|考试|练习/.test(tn)) mtasks.push(esc((st.stageName || "") + "：" + tn + " " + sc + "分（未达标）"));
           }
         }));
-      } else if (!mrec && prog < 100) {
-        mtasks.push(`<span style="color:#9aa1af">非直营组学员，未完成任务明细需在学习地图后台查看</span>`);
       }
-      if (mtasks.length) { allDone = false; seg += `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${mtasks.join("<br>")}</div>`; }
+      const mapOk = !mtasks.length;
+      if (!mapOk) allDone = false;
+      let seg = `<b>${esc(mp.mapName || "")}</b> 进度 ${prog.toFixed(0)}% ${mapOk ? "✅" : "❌"}`;
+      if (e.stageName && e.stageName !== "-" && !mapOk) seg += `（当前阶段：${esc(e.stageName)}）`;
+      if (mtasks.length) seg += `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${mtasks.join("<br>")}</div>`;
+      else if (!mrec && prog < 100) { seg += `<div style="color:#9aa1af;font-size:12px;margin-top:2px">非直营组学员，未完成任务明细需在学习地图后台查看</div>`; allDone = false; }
       mapSegs.push(seg);
     });
     /* 学习任务学习 = 「线上线下培训」类计划派发给该员工的学习情况：按计划列 已学/应学（2026-10-15 Rain 定稿，不列明细） */
