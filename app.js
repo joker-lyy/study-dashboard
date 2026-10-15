@@ -2690,7 +2690,8 @@ window.sharePng = async function (mode) {
       const det = p.empDetails && p.empDetails[String(pe.employeeId)];
       let line;
       if (det && det.stages) {
-        const ts = det.stages.reduce((a, s) => a.concat(s.t || []), []);
+        /* 只统计学习任务：剔除面授(3)/问卷(6)/练习(11)（2026-10-15 Rain：调查问卷这类不统计） */
+        const ts = det.stages.reduce((a, s) => a.concat(s.t || []), []).filter(t => ![3, 6, 11].includes(+t[1]));
         const done = ts.filter(t => t[2] === "W").length;
         const ok = ts.length > 0 && done >= ts.length;
         if (!ok) allDone = false;
