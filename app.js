@@ -2308,7 +2308,7 @@ window.sharePng = async function (mode) {
   const drNum = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
 
   function drStageRow(stage) {
-    let cT = 0, cD = 0; const exams = [];
+    let cT = 0, cD = 0; const exams = []; const ups = [];
     let uT = 0, uP = 0, uWait = 0;
     let allDone = true; const times = [];
     for (const t of (stage.t || [])) {
@@ -2321,8 +2321,8 @@ window.sharePng = async function (mode) {
         if (pass) { if (hasTime) times.push(tm); } else allDone = false;
       } else if (DR_UP.has(ty)) {
         uT++;
+        ups.push({ name, stt, score, done, wait: done && score == null });
         if (done && score != null) { uP++; if (hasTime) times.push(tm); }
-        else if (done) { uWait++; allDone = false; }
         else allDone = false;
       } else {
         cT++;
@@ -2330,7 +2330,7 @@ window.sharePng = async function (mode) {
       }
     }
     const finish = allDone && times.length ? times.sort().pop() : null;
-    return { name: stage.n || "", cT, cD, exams, uT, uP, uWait, finish };
+    return { name: stage.n || "", cT, cD, exams, ups, uT, uP, uWait, finish };
   }
 
   function drStoreCardHtml(plan, storeName, learners, generatedAt) {
@@ -2359,13 +2359,16 @@ window.sharePng = async function (mode) {
       else for (const ex of row.exams) {
         if (ex.pass) lines.push(["考试", ex.name + " " + ex.score + "分", "ok"]);
         else if (ex.wait) lines.push(["考试", ex.name + " 待审核", "wait"]);
-        else if (ex.stt === "W") lines.push(["考试", ex.name + " " + (ex.score != null ? ex.score + "分" : "未出分"), "bad"]);
+        else if (ex.stt === "W") lines.push(["考试", ex.name + " " + (ex.score != null ? ex.score + "分(未过)" : "未出分"), "bad"]);
         else lines.push(["考试", ex.name + " 缺考", "bad"]);
       }
       if (!row.uT) lines.push(["上传作业", "—", "na"]);
-      else if (row.uWait > 0) lines.push(["上传作业", "待审核×" + row.uWait, "wait"]);
-      else if (row.uP === row.uT) lines.push(["上传作业", row.uP + "/" + row.uT, "ok"]);
-      else lines.push(["上传作业", row.uP + "/" + row.uT, "bad"]);
+      else for (const up of row.ups) {
+        if (!up.done) lines.push(["上传作业", up.name + " 缺考", "bad"]);
+        else if (up.wait) lines.push(["上传作业", up.name + " 待审核", "wait"]);
+        else if (up.score >= DR_PASS) lines.push(["上传作业", up.name + " " + up.score + "分", "ok"]);
+        else lines.push(["上传作业", up.name + " " + up.score + "分(未过)", "bad"]);
+      }
       lines.push(["完成时间", row.finish ? row.finish.slice(5, 16) : "—", row.finish ? "time" : "na"]);
       return lines.map(l => '<div class="li"><span class="lb">' + l[0] + '</span><span class="v ' + l[2] + '">' + esc(l[1]) + "</span></div>").join("");
     };
