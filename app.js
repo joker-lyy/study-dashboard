@@ -732,7 +732,8 @@ function renderCat() {
       <h3>二级汇总</h3>
       <div class="subtabs">
         ${SUBS.map(s => `<button class="${state.sub === s ? "active" : ""}" onclick="state.sub='${s}';renderCat()">${s}</button>`).join("")}
-        ${state.sub === "全部" ? `<button class="btn" style="padding:5px 14px;font-size:12px;margin-left:8px" onclick="sharePng('all')">🖼 快照</button>` : ""}
+        ${state.sub === "全部" ? `<button class="btn" style="padding:5px 14px;font-size:12px;margin-left:8px" onclick="sharePng('all')">🖼 快照</button>
+        <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:8px" onclick="openDailyReport()">📄 日报</button>` : ""}
       </div>
       <div id="allSecBody" style="overflow-x:auto">${body}</div>
     </div>`;
@@ -2295,3 +2296,211 @@ window.sharePng = async function (mode) {
       <div style="display:flex;justify-content:flex-end;margin-top:10px"><button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">关闭</button></div>`, true);
   }
 };
+
+// ============ 门店学习日报（2026-10-15 Rain）：二级汇总「📄 日报」按钮 ============
+// 版式 = 22:20 夜间快照的竖版「门店学习报表」（_night_snapshot.js buildStoreHtml 同源）；
+// 差异：实时读页面 data、门店可勾选、卡片在页内预览并可逐张下载 PNG（html2canvas）。
+(function () {
+  const DR_COURSE = new Set([1, 2, 7, 8, 10]); // 课程学习=课件/文件+视频（含表单，与夜间报表同口径）
+  const DR_EXAM = new Set([4]);
+  const DR_UP = new Set([5]);
+  const DR_PASS = 80;
+  const drNum = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+
+  function drStageRow(stage) {
+    let cT = 0, cD = 0; const exams = [];
+    let uT = 0, uP = 0, uWait = 0;
+    let allDone = true; const times = [];
+    for (const t of (stage.t || [])) {
+      const name = t[0], ty = t[1], stt = t[2], score = drNum(t[3]), tm = t[5];
+      const done = stt === "W";
+      const hasTime = tm && tm !== "-";
+      if (DR_EXAM.has(ty)) {
+        const pass = done && score != null && score >= DR_PASS;
+        exams.push({ name, stt, score, pass, wait: done && score == null });
+        if (pass) { if (hasTime) times.push(tm); } else allDone = false;
+      } else if (DR_UP.has(ty)) {
+        uT++;
+        if (done && score != null) { uP++; if (hasTime) times.push(tm); }
+        else if (done) { uWait++; allDone = false; }
+        else allDone = false;
+      } else {
+        cT++;
+        if (done) { cD++; if (hasTime) times.push(tm); } else allDone = false;
+      }
+    }
+    const finish = allDone && times.length ? times.sort().pop() : null;
+    return { name: stage.n || "", cT, cD, exams, uT, uP, uWait, finish };
+  }
+
+  function drStoreCardHtml(plan, storeName, learners, generatedAt) {
+    const _p2 = n => String(n).padStart(2, "0");
+    const now = new Date();
+    const snapAt = now.getFullYear() + "-" + _p2(now.getMonth() + 1) + "-" + _p2(now.getDate()) + " " + _p2(now.getHours()) + ":" + _p2(now.getMinutes());
+    const periodEnd = plan.endDate || "";
+    const joins = learners.map(e => String(e.joinDate || "").slice(0, 10)).filter(Boolean).sort();
+    const periodStart = joins[0] || plan.startDate || "";
+    const rowsOf = learners.map(e => {
+      const det = (plan.empDetails || {})[String(e.employeeId)];
+      return { emp: e, hasDetail: !!det, rows: det ? (det.stages || []).map(drStageRow) : [] };
+    });
+    const stageNames = rowsOf.find(r => r.rows.length) ? rowsOf.find(r => r.rows.length).rows.map(r => r.name) : [];
+    const seqCn = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫", "⑬", "⑭", "⑮"];
+    const cellHtml = (r, sIdx) => {
+      if (!r.hasDetail) return '<div style="color:#9aa1af;font-size:12px;padding:6px 0">暂无明细数据</div>';
+      const row = r.rows[sIdx];
+      if (!row) return '<div style="color:#9aa1af">—</div>';
+      const lines = [];
+      if (!row.cT) lines.push(["课程学习", "—", "na"]);
+      else if (row.cD === row.cT) lines.push(["课程学习", row.cD + "/" + row.cT, "ok"]);
+      else if (row.cD === 0) lines.push(["课程学习", "0/" + row.cT, "bad"]);
+      else lines.push(["课程学习", row.cD + "/" + row.cT, "part"]);
+      if (!row.exams.length) lines.push(["考试", "—", "na"]);
+      else for (const ex of row.exams) {
+        if (ex.pass) lines.push(["考试", ex.name + " " + ex.score + "分", "ok"]);
+        else if (ex.wait) lines.push(["考试", ex.name + " 待审核", "wait"]);
+        else if (ex.stt === "W") lines.push(["考试", ex.name + " " + (ex.score != null ? ex.score + "分" : "未出分"), "bad"]);
+        else lines.push(["考试", ex.name + " 缺考", "bad"]);
+      }
+      if (!row.uT) lines.push(["上传作业", "—", "na"]);
+      else if (row.uWait > 0) lines.push(["上传作业", "待审核×" + row.uWait, "wait"]);
+      else if (row.uP === row.uT) lines.push(["上传作业", row.uP + "/" + row.uT, "ok"]);
+      else lines.push(["上传作业", row.uP + "/" + row.uT, "bad"]);
+      lines.push(["完成时间", row.finish ? row.finish.slice(5, 16) : "—", row.finish ? "time" : "na"]);
+      return lines.map(l => '<div class="li"><span class="lb">' + l[0] + '</span><span class="v ' + l[2] + '">' + esc(l[1]) + "</span></div>").join("");
+    };
+    const bodyRows = [];
+    for (let s = 0; s < stageNames.length; s++) {
+      bodyRows.push('<tr><td class="stg">' + (seqCn[s] || s + 1) + " " + esc(stageNames[s]) + "</td>" +
+        rowsOf.map(r => "<td>" + cellHtml(r, s) + "</td>").join("") + "</tr>");
+    }
+    if (!stageNames.length) bodyRows.push('<tr><td class="stg">—</td><td colspan="' + rowsOf.length + '" style="color:#9aa1af">暂无阶段数据</td></tr>');
+    const W = Math.min(1400, 420 + rowsOf.length * 210);
+    return '<div class="drcard" style="width:' + W + 'px;background:#fff;border:1px solid #e2e5ec;border-radius:12px;padding:16px 18px">' +
+      '<div class="cap"><span class="t">' + esc(String(plan.planName || "多店加盟商培训").replace(/裂变/g, "多店")) + " · 门店学习报表</span>" +
+      '<span class="s">数据生成 ' + esc((generatedAt || "").slice(5, 16)) + " · 快照 " + esc(snapAt.slice(5, 16)) + "</span></div>" +
+      '<div class="hrow">' +
+      '<div class="hcell"><p class="hl">门店名</p><p class="hv">' + esc(storeName || "—") + "</p></div>" +
+      '<div class="hcell"><p class="hl">学习周期</p><p class="hv nw">' + esc(periodStart) + " ~ " + esc(periodEnd) + "</p></div>" +
+      '<div class="hcell"><p class="hl">学员人数</p><p class="hv nw">' + learners.length + "</p></div></div>" +
+      '<table><tr><th style="width:150px">阶段</th>' +
+      rowsOf.map(r => "<th>姓名　" + esc(r.emp.empName || "") + "</th>").join("") +
+      "</tr>" + bodyRows.join("") + "</table>" +
+      '<div class="leg"><span><b style="color:#3B6D11">绿</b>=完成 / 考试≥' + DR_PASS + "分 / 审核通过</span>" +
+      '<span><b style="color:#854F0B">黄</b>=已交待老师审核</span>' +
+      '<span><b style="color:#A32D2D">红</b>=未完成 / 缺考</span>' +
+      '<span><b style="color:#9aa1af">—</b>=本阶段无此项</span></div></div>';
+  }
+
+  const DR_CSS = ".drcard{font-family:'Microsoft YaHei',system-ui,sans-serif;color:#1A2A4A}" +
+    ".drcard *{box-sizing:border-box;margin:0;padding:0}" +
+    ".drcard .cap{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}" +
+    ".drcard .cap .t{font-size:15px;font-weight:500}" +
+    ".drcard .cap .s{font-size:11.5px;color:#8b93a3}" +
+    ".drcard .hrow{display:grid;grid-template-columns:1.5fr 1.9fr .7fr;gap:8px;margin-bottom:10px}" +
+    ".drcard .hcell{background:#f3f5f9;border-radius:8px;padding:7px 12px}" +
+    ".drcard .hl{font-size:11.5px;color:#7a8399}" +
+    ".drcard .hv{font-size:12.5px;font-weight:500;margin-top:1px}" +
+    ".drcard .hv.nw{white-space:nowrap}" +
+    ".drcard table{width:100%;border-collapse:collapse;table-layout:fixed}" +
+    ".drcard th,.drcard td{border:1px solid #e2e5ec;padding:5px 9px;font-size:12px;vertical-align:top;text-align:left}" +
+    ".drcard th{background:#f3f5f9;font-weight:500}" +
+    ".drcard .stg{font-weight:500;font-size:12px}" +
+    ".drcard .li{display:flex;justify-content:space-between;gap:8px;padding:1px 0}" +
+    ".drcard .lb{color:#98a0b0;font-size:11.5px;flex:none}" +
+    ".drcard .v{font-size:12px;text-align:right}" +
+    ".drcard .ok{color:#3B6D11;font-weight:500}.drcard .bad{color:#A32D2D;font-weight:500}" +
+    ".drcard .wait{color:#854F0B;font-weight:500}.drcard .part{color:#185FA5;font-weight:500}" +
+    ".drcard .time{color:#1A2A4A}.drcard .na{color:#9aa1af}" +
+    ".drcard .leg{display:flex;gap:12px;margin-top:9px;font-size:11.5px;color:#7a8399;flex-wrap:wrap}";
+
+  window.openDailyReport = function () {
+    const plans = plansInRange(state.cat);
+    const p = plans[state.planIdx];
+    if (!p) return;
+    const emps = statEmpsOf(p);
+    const byStore = new Map();
+    emps.forEach(e => { const s = storeOf(e) || "无门店"; if (!byStore.has(s)) byStore.set(s, []); byStore.get(s).push(e); });
+    const stores = [...byStore.keys()].sort((a, b) => a.localeCompare(b, "zh-CN"));
+    let ov = document.getElementById("dailyReportOv");
+    if (!ov) {
+      ov = document.createElement("div"); ov.id = "dailyReportOv";
+      ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:24px";
+      document.body.appendChild(ov);
+    }
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `<style>${DR_CSS}</style>
+      <div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:88vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div style="padding:16px 20px 10px;border-bottom:1px solid #eef0f5">
+          <div style="font-size:15px;font-weight:700;color:#1A2A4A">📄 门店学习日报 · 选择门店</div>
+          <div style="font-size:12px;color:#7a8399;margin-top:4px">${esc(p.planName || "")} · 实时读取当前数据，版式同每日门店学习报表</div>
+        </div>
+        <div style="padding:10px 20px;border-bottom:1px solid #eef0f5;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button onclick="drToggleAll(true)" style="background:#f0f2f7;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">全选</button>
+          <button onclick="drToggleAll(false)" style="background:#f0f2f7;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">清空</button>
+          <span style="font-size:12px;color:#7a8399" id="drCount"></span>
+        </div>
+        <div style="padding:8px 20px;overflow:auto;flex:1" id="drStoreList">
+          ${stores.map((s, i) => `<label style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px dashed #eef0f5;cursor:pointer;font-size:13px;color:#1A2A4A">
+            <input type="checkbox" class="drChk" value="${esc(s)}" ${stores.length === 1 ? "checked" : ""} onchange="drCountUpd()">
+            <span style="flex:1">${esc(s)}</span><span style="color:#7a8399;font-size:12px">${byStore.get(s).length} 人</span></label>`).join("") || '<div style="color:#9aa1af;font-size:13px;padding:12px 0">无学员数据</div>'}
+        </div>
+        <div style="padding:12px 20px;border-top:1px solid #eef0f5;display:flex;justify-content:flex-end;gap:10px">
+          <button onclick="document.getElementById('dailyReportOv').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">关闭</button>
+          <button onclick="drGenerate()" style="background:#2f54eb;color:#fff;border:none;border-radius:8px;padding:8px 22px;cursor:pointer;font-size:13px">生成日报</button>
+        </div>
+      </div>`;
+    drCountUpd();
+  };
+  window.drToggleAll = function (on) { document.querySelectorAll("#dailyReportOv .drChk").forEach(c => c.checked = on); drCountUpd(); };
+  window.drCountUpd = function () {
+    const n = document.querySelectorAll("#dailyReportOv .drChk:checked").length;
+    const el = document.getElementById("drCount"); if (el) el.textContent = "已选 " + n + " 家门店";
+  };
+  window.drGenerate = async function () {
+    const picked = [...document.querySelectorAll("#dailyReportOv .drChk:checked")].map(c => c.value);
+    if (!picked.length) { alert("请先勾选至少一家门店"); return; }
+    const plans = plansInRange(state.cat);
+    const p = plans[state.planIdx];
+    const emps = statEmpsOf(p);
+    const byStore = new Map();
+    emps.forEach(e => { const s = storeOf(e) || "无门店"; if (!byStore.has(s)) byStore.set(s, []); byStore.get(s).push(e); });
+    const genAt = (typeof DATA !== "undefined" && DATA && DATA.generatedAt) || "";
+    let ov = document.getElementById("dailyReportOv");
+    ov.innerHTML = `<style>${DR_CSS}</style>
+      <div style="background:#eef1f6;border-radius:12px;max-width:96vw;width:1460px;max-height:92vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div style="padding:12px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #dde2ec;background:#fff;border-radius:12px 12px 0 0">
+          <b style="font-size:14px;color:#1A2A4A">📄 门店学习日报（${picked.length} 家）</b>
+          <span style="font-size:12px;color:#7a8399">每张卡片可单独下载 PNG 发群</span>
+          <span style="flex:1"></span>
+          <button onclick="openDailyReport()" style="background:#f0f2f7;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px">← 重选门店</button>
+          <button onclick="document.getElementById('dailyReportOv').remove()" style="background:#f0f2f7;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px">关闭</button>
+        </div>
+        <div id="drCards" style="overflow:auto;padding:16px;display:flex;flex-direction:column;gap:18px;align-items:flex-start">
+          ${picked.map((s, i) => {
+      const card = drStoreCardHtml(p, s, byStore.get(s) || [], genAt);
+      return `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
+              <button onclick="drDownload(${i})" style="background:#2f54eb;color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:12px">⬇ 下载「${esc(s)}」图片</button>
+              <div id="drCard${i}">${card}</div></div>`;
+    }).join("")}
+        </div></div>`;
+    try { await window._loadHtml2canvas(); } catch (e) { /* 下载时再试一次 */ }
+  };
+  window.drDownload = async function (i) {
+    const el = document.getElementById("drCard" + i);
+    if (!el) return;
+    const btn = el.parentElement.querySelector("button");
+    const old = btn.textContent; btn.textContent = "⏳ 生成中…"; btn.disabled = true;
+    try {
+      await window._loadHtml2canvas();
+      const cv = await html2canvas(el.firstElementChild, { backgroundColor: "#ffffff", scale: 2, logging: false });
+      const a = document.createElement("a");
+      const storeName = el.querySelector(".hcell .hv").textContent.trim();
+      a.download = storeName.replace(/[\\/:*?"<>|]/g, "_") + "-门店学习报表.png";
+      a.href = cv.toDataURL("image/png");
+      a.click();
+      btn.textContent = old;
+    } catch (e) { alert("生成图片失败：" + (e && e.message || e)); btn.textContent = old; }
+    btn.disabled = false;
+  };
+})();
