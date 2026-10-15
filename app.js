@@ -2693,7 +2693,8 @@ window.sharePng = async function (mode) {
         /* 只统计学习任务：剔除面授(3)/问卷(6)/练习(11)（2026-10-15 Rain：调查问卷这类不统计） */
         const ts = det.stages.reduce((a, s) => a.concat(s.t || []), []).filter(t => ![3, 6, 11].includes(+t[1]));
         const done = ts.filter(t => t[2] === "W").length;
-        const ok = ts.length > 0 && done >= ts.length;
+        if (!ts.length) return; /* 剔除问卷等后无学习任务 → 整个计划不统计 */
+        const ok = done >= ts.length;
         if (!ok) allDone = false;
         line = `<b>${esc(p.planName || "")}</b> 已学 ${done}/${ts.length} ${ok ? "✅" : "❌"}`;
       } else {
