@@ -2663,15 +2663,17 @@ window.sharePng = async function (mode) {
       const rec = dmEmps[String(e.employeeId)];
       const mrec = rec && (rec.maps || []).find(m => String(m.mapId) === String(mp.mapId));
       if (mrec && (mrec.stages || []).length) {
+        let examPending = false;
         mrec.stages.forEach(st => (st.tasks || []).forEach(t => {
           const tn = t.taskName || "?";
-          if (/晋升考核/.test(tn)) return; /* 晋升考核=培训部派人考核，不算员工未完成（2026-10-15 Rain） */
+          if (/晋升考核/.test(tn)) { if (String(t.status) !== "3") examPending = true; return; } /* 晋升考核≠员工未学，红字明细不列；但未考完地图不判✅ */
           if (String(t.status) !== "3") mtasks.push(esc((st.stageName || "") + "：" + tn + "（未完成）"));
           else {
             const sc = parseFloat(t.realScore);
             if (!isNaN(sc) && sc < 80 && /考核|考试|练习/.test(tn)) mtasks.push(esc((st.stageName || "") + "：" + tn + " " + sc + "分（未达标）"));
           }
         }));
+        if (examPending) mtasks.push(`<span style="color:#B8860B">晋升考核未完成（待培训部安排考核）</span>`);
       }
       const mapOk = !mtasks.length;
       if (!mapOk) allDone = false;
