@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>直营店晋升提报</title>
+<style>
+  :root { --navy:#1A2A4A; --blue:#186BEB; --line:#E6E9F0; --t2:#7a8399; }
+  * { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  body { background:#F4F6FA; min-height:100vh; padding:18px 14px 40px; }
+  .wrap { max-width:520px; margin:0 auto; }
+  .hero { background:linear-gradient(135deg,#1A2A4A,#2A4A7A); color:#fff; border-radius:14px; padding:22px 20px; margin-bottom:16px; }
+  .hero h1 { font-size:20px; letter-spacing:1px; }
+  .hero p { font-size:12px; opacity:.75; margin-top:8px; line-height:1.7; }
+  .card { background:#fff; border-radius:14px; padding:6px 18px 18px; box-shadow:0 2px 10px rgba(26,42,74,.06); }
+  .mod { padding:16px 0; border-bottom:1px solid var(--line); }
+  .mod:last-child { border-bottom:none; }
+  .mod .t { font-size:15px; font-weight:600; color:var(--navy); display:flex; align-items:center; }
+  .mod .t i { width:4px; height:15px; background:var(--blue); border-radius:2px; display:inline-block; margin-right:8px; }
+  .mod .d { font-size:12px; color:var(--t2); margin:5px 0 10px 12px; }
+  input, select { width:100%; padding:12px 12px; border:1px solid var(--line); border-radius:9px; font-size:15px; background:#FAFBFD; margin-left:0; }
+  input:focus, select:focus { outline:none; border-color:var(--blue); background:#fff; }
+  #otherPos { display:none; margin-top:8px; }
+  button#submitBtn { width:100%; margin-top:18px; padding:14px; border:none; border-radius:10px; background:var(--blue); color:#fff; font-size:16px; font-weight:600; letter-spacing:2px; cursor:pointer; }
+  button#submitBtn:active { opacity:.85; }
+  #err { color:#e64340; font-size:13px; text-align:center; margin-top:10px; min-height:18px; }
+  .done { text-align:center; padding:40px 10px; }
+  .done .ico { font-size:52px; }
+  .done h2 { color:var(--navy); margin:12px 0 8px; }
+  .done p { color:var(--t2); font-size:14px; line-height:1.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>员工培训 · V 晋升提报</h1>
+    <p>由店长填写，为本店员工提报晋升。<br>提报前请确认该员工已完成当前职位学习地图的全部内容。</p>
+  </div>
+  <div id="formWrap" class="card">
+    <div class="mod">
+      <div class="t"><i></i>门店</div>
+      <div class="d">请选择提报员工所在的门店</div>
+      <input id="store" list="storeList" placeholder="输入或选择门店名称" />
+      <datalist id="storeList"></datalist>
+    </div>
+    <div class="mod">
+      <div class="t"><i></i>姓名</div>
+      <div class="d">提报员工的姓名</div>
+      <input id="ename" placeholder="请输入员工姓名" />
+    </div>
+    <div class="mod">
+      <div class="t"><i></i>提报职位</div>
+      <div class="d">员工晋升的目标职位</div>
+      <select id="pos">
+        <option value="">请选择提报职位</option>
+        <option>初级师傅</option>
+        <option>中级师傅</option>
+        <option>星级师傅</option>
+        <option>初级店长</option>
+        <option value="__other">其他（手动输入）</option>
+      </select>
+      <input id="otherPos" placeholder="请输入职位名称" />
+    </div>
+    <button id="submitBtn" onclick="submitSignup()">提 交 提 报</button>
+    <div id="err"></div>
+  </div>
+</div>
+<script>
+const ANON = "sb_publishable_bMQvqugXZvjgs9w5y_2ZJA_LETBEnjO";
+const URL_BASE = "https://furiqmhvflnjllrwfhyw.supabase.co/rest/v1/puzzle_records";
+const esc = s => s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// 门店下拉候选：加载看板门店清单（失败则自由输入）
+fetch("./data/stores.json").then(r => r.ok ? r.json() : Promise.reject()).then(j => {
+  document.getElementById("storeList").innerHTML = (j.stores || []).map(s => `<option value="${esc(s)}">`).join("");
+}).catch(() => {});
+document.getElementById("pos").addEventListener("change", function () {
+  document.getElementById("otherPos").style.display = this.value === "__other" ? "block" : "none";
+});
+function showErr(m) { document.getElementById("err").textContent = m; }
+async function submitSignup() {
+  const btn = document.getElementById("submitBtn");
+  const store = document.getElementById("store").value.trim();
+  const name = document.getElementById("ename").value.trim();
+  let pos = document.getElementById("pos").value;
+  if (pos === "__other") pos = document.getElementById("otherPos").value.trim();
+  if (!store) return showErr("请填写门店名称");
+  if (!name) return showErr("请填写员工姓名");
+  if (!pos) return showErr("请选择提报职位");
+  btn.disabled = true; btn.textContent = "提 交 中 …"; showErr("");
+  try {
+    const r = await fetch(URL_BASE, {
+      method: "POST",
+      headers: { "apikey": ANON, "Authorization": "Bearer " + ANON, "Content-Type": "application/json", "Prefer": "return=minimal" },
+      body: JSON.stringify({ game: "promo_signup", store, time: Date.now(), errors: 0, name: JSON.stringify({ name, position: pos }) })
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    document.getElementById("formWrap").innerHTML =
+      `<div class="done"><div class="ico">✅</div><h2>提报成功</h2><p>${esc(store)} · ${esc(name)}<br>提报职位：${esc(pos)}<br><br>培训部已收到，将核对学习进度后推进考核安排。</p></div>`;
+    window.scrollTo(0, 0);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "提 交 提 报";
+    showErr("提交失败（" + e.message + "），请检查网络后重试");
+  }
+}
+</script>
+</body>
+</html>
