@@ -2644,30 +2644,55 @@ window.sharePng = async function (mode) {
     const dmEmps = (DATA.directMaps || {}).emps || {};
     let allDone = true;
     const mapSegs = [], taskLines = [];
+    const empIds = new Set(hits.map(h => String(h.e.employeeId)));
     hits.forEach(({ mp, e }) => {
       const prog = +e.completionSchedule || 0;
       let seg = `<b>${esc(mp.mapName || "")}</b> 进度 ${prog.toFixed(0)}% ${prog >= 100 ? "✅" : "❌"}`;
       if (e.stageName && e.stageName !== "-") seg += `（当前阶段：${esc(e.stageName)}）`;
       if (prog < 100) allDone = false;
-      mapSegs.push(seg);
+      const mtasks = [];
       const rec = dmEmps[String(e.employeeId)];
       const mrec = rec && (rec.maps || []).find(m => String(m.mapId) === String(mp.mapId));
       if (mrec && (mrec.stages || []).length) {
         mrec.stages.forEach(st => (st.tasks || []).forEach(t => {
           const tn = t.taskName || "?";
-          if (String(t.status) !== "3") { taskLines.push(esc((st.stageName || "") + "：" + tn + "（未完成）")); allDone = false; }
+          if (String(t.status) !== "3") mtasks.push(esc((st.stageName || "") + "：" + tn + "（未完成）"));
           else {
             const sc = parseFloat(t.realScore);
-            if (!isNaN(sc) && sc < 80 && /考核|考试|练习/.test(tn)) { taskLines.push(esc((st.stageName || "") + "：" + tn + " " + sc + "分（未达标）")); allDone = false; }
+            if (!isNaN(sc) && sc < 80 && /考核|考试|练习/.test(tn)) mtasks.push(esc((st.stageName || "") + "：" + tn + " " + sc + "分（未达标）"));
           }
         }));
       } else if (!mrec && prog < 100) {
-        taskLines.push(`<span style="color:#9aa1af">非直营组学员，未完成任务明细需在学习地图后台查看</span>`);
+        mtasks.push(`<span style="color:#9aa1af">非直营组学员，未完成任务明细需在学习地图后台查看</span>`);
+      }
+      if (mtasks.length) { allDone = false; seg += `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${mtasks.join("<br>")}</div>`; }
+      mapSegs.push(seg);
+    });
+    /* 指派学习任务 = 「线上线下培训」类计划派发给该员工的任务（2026-10-15 Rain 口径） */
+    const asgLines = [];
+    (DATA.plans || []).forEach(p => {
+      if ((p.category || p.categoryName || "") !== "线上线下培训") return;
+      const pe = (p.emps || []).find(x => empIds.has(String(x.employeeId)) ||
+        (psNorm(x.empName) === nN && (() => { const xs = psNorm(x.storeNames || ""); return xs && (xs === sN || sN.indexOf(xs) >= 0 || xs.indexOf(sN) >= 0); })()));
+      if (!pe) return;
+      const det = p.empDetails && p.empDetails[String(pe.employeeId)];
+      if (det && det.stages) {
+        det.stages.forEach(s => (s.t || []).forEach(t => {
+          const tn = esc(t[0] || "?");
+          if (t[2] !== "W") asgLines.push(esc(p.planName || "") + "：" + tn + (t[2] === "DYJ" || t[4] === "待阅卷" ? "（待审核）" : "（未完成）"));
+          else {
+            const sc = parseFloat(t[3]);
+            if (!isNaN(sc) && (sc < 80 || t[4] === "否")) asgLines.push(esc(p.planName || "") + "：" + tn + " " + sc + "分（未达标）");
+          }
+        }));
+      } else if (pe.trainingStatus !== 2) {
+        asgLines.push(esc(p.planName || "") + "：整体未完成");
       }
     });
-    const taskSeg = taskLines.length
-      ? `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${taskLines.join("<br>")}</div>`
+    const taskSeg = asgLines.length
+      ? `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${asgLines.join("<br>")}</div>`
       : `<div style="color:#3B6D11;font-size:12px;margin-top:2px">全部完成 ✅</div>`;
+    if (asgLines.length) allDone = false;
     const verdict = allDone
       ? `<span style="color:#3B6D11;font-weight:600">符合晋升条件 ✅</span>`
       : `<span style="color:#A32D2D;font-weight:600">不符合晋升条件 ❌</span>`;
