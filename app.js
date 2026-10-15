@@ -2592,12 +2592,13 @@ window.sharePng = async function (mode) {
     const box = document.getElementById("psList");
     if (!box) return;
     if (!rows.length) { box.innerHTML = `<div style="color:#7a8399;font-size:13px;padding:14px 0">暂无提报记录（店长提交后自动出现在这里）</div>`; return; }
-    box.innerHTML = `<table><tr><th>提报时间</th><th>门店</th><th>姓名</th><th>提报职位</th><th style="min-width:260px">学习进度判定（提报职位及之前全部地图）</th><th style="width:160px">操作</th></tr>` +
+    box.innerHTML = `<table><tr><th>提报时间</th><th>门店</th><th>姓名</th><th>提报职位</th><th style="min-width:240px">学习地图学习（提报职位及之前全部地图）</th><th style="min-width:220px">学习任务学习（线上线下培训派发任务）</th><th style="width:160px">操作</th></tr>` +
       rows.map(r => {
         const p = parseName(r.name);
         const j = psJudge(r.store || "", p.name, p.pos);
         return `<tr data-psid="${r.id}"><td style="white-space:nowrap">${fmtT(r.time)}</td><td>${esc(r.store || "—")}</td><td>${esc(p.name)}</td><td>${esc(p.pos || "—")}</td>
-          <td style="white-space:normal;word-break:break-all">${j.html}</td>
+          <td style="white-space:normal;word-break:break-all">${j.mapHtml}</td>
+          <td style="white-space:normal;word-break:break-all">${j.asgHtml}</td>
           <td style="white-space:nowrap"><button class="btn" style="padding:3px 10px;font-size:12px" onclick="psShot('${r.id}',this)">🖼 快照</button>
           <button class="btn" style="padding:3px 10px;font-size:12px" onclick="psEdit('${r.id}')">编辑</button>
           <button class="btn" style="padding:3px 10px;font-size:12px;background:#fdecec;color:#A32D2D" onclick="psDel('${r.id}')">删除</button></td></tr>`;
@@ -2626,7 +2627,7 @@ window.sharePng = async function (mode) {
     return 99; // 职位未识别 → 全部地图都算
   }
   function psJudge(store, name, pos) {
-    if (!name) return { cls: "na", html: `<span style="color:#9aa1af">—</span>` };
+    if (!name) return { cls: "na", mapHtml: `<span style="color:#9aa1af">—</span>`, asgHtml: `<span style="color:#9aa1af">—</span>` };
     const sN = psNorm(store), nN = psNorm(name), R = psPosRank(pos);
     const hits = [];
     (DATA.maps || []).forEach(mp => {
@@ -2639,7 +2640,9 @@ window.sharePng = async function (mode) {
         hits.push({ mp, e });
       });
     });
-    if (!hits.length) return { cls: "na", html: `<span style="color:#9aa1af">未在学习地图匹配到该员工（核对姓名/门店；或该员工尚未派发晋升地图）</span>` };
+    if (!hits.length) return { cls: "na",
+      mapHtml: `<span style="color:#9aa1af">未在学习地图匹配到该员工（核对姓名/门店；或该员工尚未派发晋升地图）</span>`,
+      asgHtml: `<span style="color:#9aa1af">—</span>` };
     hits.sort((a, b) => (+b.e.completionSchedule || 0) - (+a.e.completionSchedule || 0));
     const dmEmps = (DATA.directMaps || {}).emps || {};
     let allDone = true;
@@ -2696,10 +2699,9 @@ window.sharePng = async function (mode) {
     const verdict = allDone
       ? `<span style="color:#3B6D11;font-weight:600">符合晋升条件 ✅</span>`
       : `<span style="color:#A32D2D;font-weight:600">不符合晋升条件 ❌</span>`;
-    return { cls: allDone ? "ok" : "bad", html: verdict +
-      `<div style="font-size:11px;color:#5b6478;font-weight:600;margin-top:6px">▎学习地图</div>
-       <div style="font-size:12px;display:flex;flex-direction:column;gap:4px;margin-top:2px">${mapSegs.join("")}</div>
-       <div style="font-size:11px;color:#5b6478;font-weight:600;margin-top:8px">▎指派学习任务</div>${taskSeg}` };
+    return { cls: allDone ? "ok" : "bad",
+      mapHtml: `${verdict}<div style="font-size:12px;display:flex;flex-direction:column;gap:6px;margin-top:6px">${mapSegs.join("")}</div>`,
+      asgHtml: `<div style="font-size:11px;color:${asgLines.length ? "#A32D2D" : "#3B6D11"};font-weight:600;margin-bottom:3px">${asgLines.length ? "未完成 " + asgLines.length + " 项 ❌" : "全部完成 ✅"}</div>${taskSeg}` };
   }
 
   function psForm(title, rec) {
