@@ -14,7 +14,7 @@ const SURVEY_RE = /问卷|调查/; // 调查问卷类计划 → 归入 评价管
 const TYPE_NAME = { 3: "必修课", 4: "考试", 5: "作业", 7: "表单", 8: "实操" };
 
 const STATUS_MAP = { 0: ["未开始", "b-gray"], 1: ["进行中", "b-orange"], 2: ["已完成", "b-green"] };
-const CORE_CATS = ["新加盟商培训", "线上线下培训", "员工培训/晋升"];
+const CORE_CATS = ["新加盟商培训", "裂变加盟商培训", "线上线下培训", "员工培训/晋升"]; // 2026-10-15 概述页新增裂变卡（statEmpsOf 已剔测试门店）
 
 // 从阶段名解析「第N天」（兜底用：stageStats 缺失时按名字推算日期）
 function cnDayNum(s) {
