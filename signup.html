@@ -69,10 +69,9 @@
 const ANON = "sb_publishable_bMQvqugXZvjgs9w5y_2ZJA_LETBEnjO";
 const URL_BASE = "https://furiqmhvflnjllrwfhyw.supabase.co/rest/v1/puzzle_records";
 const esc = s => s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-// 门店下拉候选：加载看板门店清单（失败则自由输入）
-fetch("./data/stores.json").then(r => r.ok ? r.json() : Promise.reject()).then(j => {
-  document.getElementById("storeList").innerHTML = (j.stores || []).map(s => `<option value="${esc(s)}">`).join("");
-}).catch(() => {});
+// 门店候选：仅 8 家直营店（2026-10-15 Rain：加盟店暂不开放，后续有需要再扩）
+const DIRECT_STORES = ["广州佳润广场店","广州天河正佳广场店","广州海珠同创店","中山康华店","中山利和店","中山悦盈店","中山黄圃店","中山远洋城店"];
+document.getElementById("storeList").innerHTML = DIRECT_STORES.map(s => `<option value="${esc(s)}">`).join("");
 document.getElementById("pos").addEventListener("change", function () {
   document.getElementById("otherPos").style.display = this.value === "__other" ? "block" : "none";
 });
