@@ -2563,7 +2563,12 @@ window.sharePng = async function (mode) {
     tried++;
     fetch("http://localhost:8767/ping", { cache: "no-store" }).then(r => r.json()).then(j => {
       if (j && j.ok && !window._localSvc) { window._localSvc = true; if (state.tab === "员工培训/晋升") render(); }
-    }).catch(() => { if (tried < 5) setTimeout(probeLocal, 2500); });
+    }).catch(async () => {
+      /* 服务不在 → 通过常驻管家 8766 自动拉起 8767 后重探（10/16，免手动一键启动） */
+      const ok = await psEnsureSvc();
+      if (ok && !window._localSvc) { window._localSvc = true; if (state.tab === "员工培训/晋升") render(); }
+      else if (tried < 5) setTimeout(probeLocal, 2500);
+    });
   }
   probeLocal();
 
@@ -2572,11 +2577,21 @@ window.sharePng = async function (mode) {
     if (el) el.textContent = msg;
   }
 
+  /* 确保本机 8767 服务在线：不在时通过常驻管家 8766 的 /wake 自动拉起（10/16，免手动一键启动） */
+  async function psEnsureSvc() {
+    const ping = () => fetch("http://localhost:8767/ping", { cache: "no-store" }).then(r => r.json()).then(j => !!(j && j.ok)).catch(() => false);
+    if (await ping()) return true;
+    try { await fetch("http://localhost:8766/wake?board=study", { cache: "no-store" }); } catch (e) {}
+    for (let i = 0; i < 8; i++) { await new Promise(r => setTimeout(r, 1000)); if (await ping()) return true; }
+    return false;
+  }
+
   async function psLoad() {
     const box = document.getElementById("psList");
     if (!box) return;
     box.innerHTML = `<div style="color:#7a8399;font-size:13px;padding:14px 0">加载中…</div>`;
     try {
+      await psEnsureSvc();
       /* 优先走本机 8767 代理（service key 仅在本机服务端）；失败降级直连 supabase */
       let r = await fetch("http://localhost:8767/api/promo_records").catch(() => null);
       if (r && r.ok) {
@@ -2758,6 +2773,7 @@ window.sharePng = async function (mode) {
       const btn2 = document.getElementById("psSaveBtn");
       btn2.disabled = true; btn2.textContent = "保存中…";
       try {
+        await psEnsureSvc();
         let r, j;
         const viaProxy = rec
           ? { u: "http://localhost:8767/api/promo_upd", b: { id: rec.id, store, name: JSON.stringify({ name, position: pos }) } }
@@ -2788,6 +2804,7 @@ window.sharePng = async function (mode) {
   window.psDel = async function (id) {
     if (!confirm("确定删除这条提报记录？删除后不可恢复。")) return;
     try {
+      await psEnsureSvc();
       let r = await fetch("http://localhost:8767/api/promo_del", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
       let j = r ? await r.json().catch(() => ({})) : null;
       if (!j || !j.ok) {
