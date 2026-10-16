@@ -118,24 +118,6 @@ def _promo_secrets():
         return None
 
 
-def _promo_relay(method, qs, body=None):
-    """浏览器中继兜底（10/16）：TCP TLS 被 SNI 阻断但浏览器内核能通 → 无头 Edge 页面内 fetch 转发。"""
-    import subprocess
-    node = r"C:\Users\Rain\.workbuddy\binaries\node\versions\22.22.2-3\node.exe"
-    relay = os.path.join(DIR, "_promo_relay.js")
-    if not (os.path.exists(node) and os.path.exists(relay)):
-        return 502, {"ok": False, "msg": "浏览器中继不可用（缺 node 或 _promo_relay.js）"}
-    payload = json.dumps({"method": method, "qs": qs, "body": body}).encode("utf-8")
-    try:
-        r = subprocess.run([node, relay], input=payload, capture_output=True, timeout=120,
-                           cwd=os.path.dirname(relay) or ".")
-        out = (r.stdout or b"").decode("utf-8", "ignore").strip().splitlines()
-        j = json.loads(out[-1]) if out else {}
-        return int(j.get("status") or 0), j.get("data")
-    except Exception as e:
-        return 502, {"ok": False, "msg": "relay:%s" % e}
-
-
 def _promo_proxy(method, qs, body=None):
     """本机代理转发 Supabase REST（本机 TLS 被代理重置 → 由 8767 服务端直连）。"""
     import urllib.error
@@ -159,17 +141,11 @@ def _promo_proxy(method, qs, body=None):
             body = {"ok": False, "msg": "HTTP %s" % e.code}
         # 系统代理 502/503/504（CONNECT 打不通）→ 直连兜底重试（10/15 高瑞瑜删除失败实锤）
         if e.code in (502, 503, 504):
-            c, d = _promo_direct(req)
-            if not (200 <= c < 300):
-                return _promo_relay(method, qs, body)
-            return c, d
+            return _promo_direct(req)
         return e.code, body
     except Exception as e:
-        # 系统代理失败 → 直连兜底 → 浏览器中继（三条路总有一条通，10/16）
-        c, d = _promo_direct(req, first_err=e)
-        if not (200 <= c < 300):
-            return _promo_relay(method, qs, body)
-        return c, d
+        # 系统代理失败 → 直连兜底（两条路总有一条通）
+        return _promo_direct(req, first_err=e)
 
 
 def _promo_direct(req, first_err=None):
