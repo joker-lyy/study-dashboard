@@ -1196,7 +1196,6 @@ function renderPromo() {
   const el = document.getElementById("main");
   const maps = DATA.maps || [];
   if (state.promoSub === "培训计划") { state.cat = state.tab; renderCat(); return; }
-  if (state.promoSub === "晋升报名" && !window._localSvc) state.promoSub = "学习地图"; // 非本机打开一律回退
   if (state.promoSub === "晋升报名") { renderPromoSignup(); return; }
   if (!maps.length) { el.innerHTML = `<div class="sec empty">暂无学习地图数据，请先运行 fetch_study.py 更新</div>`; return; }
   state.promoMapIdx = Math.min(state.promoMapIdx, maps.length - 1);
@@ -2028,7 +2027,7 @@ function render() {
     bar.style.display = "flex";
     bar.innerHTML = `<button class="${state.promoSub === "学习地图" ? "active" : ""}" onclick="state.promoSub='学习地图';state.promoMapIdx=0;render()">学习地图（晋升阶梯）</button>
       <button class="${state.promoSub === "培训计划" ? "active" : ""}" onclick="state.promoSub='培训计划';render()">晋升培训计划</button>` +
-      (window._localSvc ? `<button class="${state.promoSub === "晋升报名" ? "active" : ""}" onclick="state.promoSub='晋升报名';render()">晋升报名管理</button>` : "");
+      `<button class="${state.promoSub === "晋升报名" ? "active" : ""}" onclick="state.promoSub='晋升报名';render()">晋升报名管理</button>`;
   } else bar.style.display = "none";
   // 直营数据独立时间控制（state.dRange 自有「全部/本月数据/上月数据」按钮，不受看板全局筛选影响）：
   // 直营页隐藏全局时间条，避免误以为全局条能控制直营数据（9/19 用户拍板）
@@ -2577,10 +2576,14 @@ window.sharePng = async function (mode) {
     if (el) el.textContent = msg;
   }
 
-  /* 确保本机 8767 服务在线：不在时通过常驻管家 8766 的 /wake 自动拉起（10/16，免手动一键启动） */
+  /* 确保本机 8767 服务在线：不在时通过常驻管家 8766 的 /wake 自动拉起。
+     10/16 改快失败：探测各带 1.5s 超时；只有 8766 管家真的在本机应答才等待拉起，
+     远端设备（无本机服务）1~3 秒内直接返回 false → CRUD 立即走 Supabase 直连。 */
   async function psEnsureSvc() {
-    const ping = () => fetch("http://localhost:8767/ping", { cache: "no-store" }).then(r => r.json()).then(j => !!(j && j.ok)).catch(() => false);
+    const ping = () => fetch("http://localhost:8767/ping", { cache: "no-store", signal: AbortSignal.timeout(1500) }).then(r => r.json()).then(j => !!(j && j.ok)).catch(() => false);
+    const butler = () => fetch("http://localhost:8766/ping", { cache: "no-store", signal: AbortSignal.timeout(1500) }).then(r => r.json()).then(j => !!(j && (j.ok || j.status === "ok"))).catch(() => false);
     if (await ping()) return true;
+    if (!(await butler())) return false; // 8766 管家也不在 → 不在本机，别等了
     try { await fetch("http://localhost:8766/wake?board=study", { cache: "no-store" }); } catch (e) {}
     for (let i = 0; i < 8; i++) { await new Promise(r => setTimeout(r, 1000)); if (await ping()) return true; }
     return false;
@@ -2805,11 +2808,20 @@ window.sharePng = async function (mode) {
     if (!confirm("确定删除这条提报记录？删除后不可恢复。")) return;
     try {
       await psEnsureSvc();
-      let r = await fetch("http://localhost:8767/api/promo_del", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+      let r = await fetch("http://localhost:8767/api/promo_del", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }), signal: AbortSignal.timeout(3000) }).catch(() => null);
       let j = r ? await r.json().catch(() => ({})) : null;
       if (!j || !j.ok) {
-        r = await fetch(SB_URL + "?id=eq." + id, { method: "DELETE", headers: sbHeaders() });
-        if (!r.ok) { const t = await r.text(); throw new Error("HTTP " + r.status + " " + t.slice(0, 120)); }
+        /* 直连 Supabase 匿名删除（RLS 已放行 DELETE，10/16 实测 204），网络抖动自动重试 3 次 */
+        let last = null;
+        for (let i = 0; i < 3; i++) {
+          try {
+            r = await fetch(SB_URL + "?id=eq." + id, { method: "DELETE", headers: sbHeaders(), signal: AbortSignal.timeout(15000) });
+            if (r.ok) { last = null; break; }
+            last = new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 120));
+          } catch (e) { last = e; }
+          await new Promise(res => setTimeout(res, 4000));
+        }
+        if (last) throw last;
       }
       psErr(""); psLoad();
     } catch (e) { psErr("删除失败：" + (e.message || e)); }
