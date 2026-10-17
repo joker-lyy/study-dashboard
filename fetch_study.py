@@ -232,7 +232,8 @@ def _frozen_emp_stat(plan, det, as_of, due_cache):
                 total += 1
                 if _exam_pass_t(t):
                     done += 1
-            elif t[1] in (3, 8):
+            elif t[1] in (1, 2, 5, 8, 10):  # 必修四类口径=app.js isCourseT（1/10图文+2/8视频+5实操）；面授(3)/表单(7)不计
+                # fix236：type5 上传类未交(st=S)此前被漏计分母 → 未交仍显示100%，与日格红色矛盾
                 total += 1
                 if t[2] == "W":
                     done += 1
