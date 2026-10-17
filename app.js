@@ -1137,13 +1137,13 @@ function renderStageModal() {
         <div>· <b>未通过：</b>所有考核打分 &lt;80 一律 ✗ 未通过（红）并计入未完成</div>
       </div>
     </details>
-    <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
+    <div class="mfilter" style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
-    <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
+    <div class="mfilter" style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>区域：</b>${boxes("Regions", rset, regions)}
     </div>
-    <div style="margin-bottom:8px;font-size:13px;display:flex;align-items:center;gap:6px">
+    <div class="mfilter" style="margin-bottom:8px;font-size:13px;display:flex;align-items:center;gap:6px">
       <b>完成状态：</b>
       ${["全部", "已完成", "未完成"].map(f => `<button class="btn" style="padding:5px 14px;font-size:12px;${state.dStatus === f ? "" : "background:var(--line);color:var(--t1)"}" onclick="setDStatus('${f}')">${f}</button>`).join("")}
       <button class="btn" style="padding:5px 14px;font-size:12px" onclick="openShareOverlay('stage')">🔗 分享</button>
@@ -2257,9 +2257,9 @@ window.sharePng = async function (mode) {
         // html2canvas 对 position:fixed 祖先内的元素会按视口高度裁剪 → 截图瞬间把遮罩改为 static
         const oldPos = modal.style.position, oldPad = modal.style.padding, oldOv = modal.style.overflow;
         modal.style.position = "static"; modal.style.padding = "0"; modal.style.overflow = "visible";
-        // 快照不带口径说明：截图瞬间隐藏弹窗内 details（口径说明），截完还原（10/17 Rain）
+        // 快照只留标题+日期+表格：隐藏口径说明与筛选行（组别/区域/完成状态），截完还原（10/17 Rain）
         const fixups = [];
-        modal.querySelectorAll("details").forEach(d => { fixups.push([d, "display", d.style.display]); d.style.display = "none"; });
+        modal.querySelectorAll("details, .mfilter").forEach(d => { fixups.push([d, "display", d.style.display]); d.style.display = "none"; });
         restore = () => { target.style.maxHeight = oldM; target.style.overflow = oldO; if (mb) mb.style.overflow = oldB; modal.style.position = oldPos; modal.style.padding = oldPad; modal.style.overflow = oldOv; fixups.forEach(([el, k, v]) => { if (k === "open") el.open = v; else el.style[k] = v; }); };
       }
     }
