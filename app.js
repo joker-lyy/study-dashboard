@@ -2719,7 +2719,7 @@ window.sharePng = async function (mode) {
       if (mrec && (mrec.stages || []).length) {
         /* 只有路径最后一环（晋升到提报职位的考核）才算"待培训部安排考核"；前面地图的晋升考核直接忽略（10/15 朱骏锋纠偏） */
         const isGateMap = hi === hits.length - 1;
-        let examPending = false;
+        var examPending = false;
         mrec.stages.forEach(st => (st.tasks || []).forEach(t => {
           const tn = t.taskName || "?";
           if (/晋升.*考核/.test(tn)) { if (isGateMap && String(t.status) !== "3") examPending = true; return; } /* 晋升考核/晋升初级师傅考核 等均≠员工未学 */
@@ -3088,10 +3088,10 @@ window.sharePng = async function (mode) {
       return;
     }
     el.innerHTML = `<div class="sec">
-      <h3>晋升报名管理 <span class="badge b-blue">本机专用</span></h3>
+      <h3>晋升报名管理 <span class="badge b-blue">🔒 限授权人员</span></h3>
       <div style="font-size:12.5px;color:#7a8399;line-height:1.8;margin-bottom:10px">
         来源 = 店长在报名链接（<a href="signup.html" target="_blank" style="color:#185FA5">signup.html</a>）提交的提报，实时读取；本页可补录、修改、删除。<br>
-        本页签<b>仅在你的电脑上出现</b>（检测到本机看板管家服务才显示），其他设备打开同一看板链接看不到、也无法操作。
+        本页签需输入访问密码进入，其他设备不知道密码只能看到密码框，看不到任何数据。
       </div>
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
         <button class="btn" style="padding:7px 18px" onclick="psAdd()">＋ 新增提报</button>
