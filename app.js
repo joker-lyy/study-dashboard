@@ -929,17 +929,17 @@ function storeRankTable(p) {
   const fz = p.frozen && p.frozen.asOf ? p.frozen : null;
   let rows = (p.storeStats || []).map(s => {
     const emps = (p.emps || []).filter(e => storeOf(e) === s.storeName && statusOf(e) != null);
-    let fDone = 0, fTotal = 0, done = 0, total = 0;
+    let fDone = 0, fTotal = 0, done = 0, total = 0, fDoneEmp = 0;
     emps.forEach(e => {
       const fe = fz && fz.emps && fz.emps[String(e.employeeId)];
-      if (fe) { fDone += fe[0]; fTotal += fe[1]; }
+      if (fe) { fDone += fe[0]; fTotal += fe[1]; if (fe[1] > 0 && fe[0] >= fe[1]) fDoneEmp++; }
       const st = empStat(p, e);
       if (st) { done += st.done; total += st.total; }
     });
     const stageRate = fTotal ? fDone / fTotal * 100 : null;
     const rate = total ? done / total * 100 : pct(s.completionRate || s.ztwclValue);
     const link = (s.organizeLink || "").split("/").filter(Boolean);
-    return { s, stageRate, rate, empN: emps.length, region: link[link.length - 1] || "" };
+    return { s, stageRate, rate, empN: emps.length, fDoneEmp, region: link[link.length - 1] || "" };
   }).sort((a, b) => (b.stageRate == null ? -1 : b.stageRate) - (a.stageRate == null ? -1 : a.stageRate) || b.rate - a.rate);
   // 裂变板块（2026-10-08 用户拍板）：
   // · 只显示「有归属学员」的门店——黄载均名下已训门店（米兰公馆/宏达路）不再多此一举列出；
@@ -957,7 +957,7 @@ function storeRankTable(p) {
         s: { storeName: fs, storeId: fs, storeStudyStatus: "已参训" },
         stageRate: fe && fe[1] ? fe[0] / fe[1] * 100 : null,
         rate: st2 && st2.total ? st2.done / st2.total * 100 : null,
-        empN: 1, region: "",
+        empN: 1, fDoneEmp: fe && fe[1] > 0 && fe[0] >= fe[1] ? 1 : 0, region: "",
       });
     });
     rows = rows.filter(r => r.empN > 0 || isTestStoreName(r.s.storeName));
@@ -970,17 +970,18 @@ function storeRankTable(p) {
     <input id="storeSearch" placeholder="搜索门店 / 区域…" value="${esc(state.storeSearch || "")}" oninput="state.storeSearch=this.value;if(!window.__storeSearchIME)setTimeout(()=>{if(!window.__storeSearchIME){renderCat();var i=document.getElementById('storeSearch');if(i){i.focus();var v=i.value;i.setSelectionRange(v.length,v.length);}}},300)" oncompositionstart="window.__storeSearchIME=1" oncompositionend="window.__storeSearchIME=0;state.storeSearch=this.value;renderCat()" onkeydown="if(event.key==='Enter'){window.__storeSearchIME=0;state.storeSearch=this.value;renderCat()}" style="padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;width:220px">
     <span style="font-size:12px;color:var(--t2)">${kw ? `匹配 ${shown.length} / ${rows.length} 家` : `共 ${rows.length} 家`}</span>
   </div>
-  <table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th title="${fz ? `截至 ${fz.asOf} 23:59：已完成（需合格）任务 ÷ 应完成任务（凌晨同步冻结，白天不刷新）` : "冻结统计未生成，待下次凌晨同步"}">当前阶段完成情况</th><th title="全部任务实时完成进度（随每次数据同步更新）">总学习进度</th><th>状态</th><th style="width:90px">操作</th></tr>
+  <table><tr><th>排名</th><th>门店</th><th>区域</th><th>门店参训人数</th><th title="${fz ? `截至 ${fz.asOf} 23:59 当前阶段任务已全部完成（100%）的参训人数` : "冻结统计未生成，待下次凌晨同步"}">当前阶段已完成人数</th><th title="${fz ? `截至 ${fz.asOf} 23:59：已完成（需合格）任务 ÷ 应完成任务（凌晨同步冻结，白天不刷新）` : "冻结统计未生成，待下次凌晨同步"}">当前阶段完成情况</th><th title="全部任务实时完成进度（随每次数据同步更新）">总学习进度</th><th>状态</th><th style="width:90px">操作</th></tr>
     ${shown.map((r, i) => `<tr>
       <td>${i + 1}</td><td style="white-space:nowrap">${esc(r.s.storeName)}${isFissionPlan(p) && isTestStoreName(r.s.storeName) ? ` <span class="badge b-gray" title="测试门店：仅展示，不计入学员人数/汇总/完成率等统计">测试 · 不计统计</span>` : ""}</td>
       <td style="color:var(--t2)">${esc(r.region)}</td>
       <td style="text-align:center">${r.empN}</td>
+      <td style="text-align:center;font-weight:600;color:${fz && r.fDoneEmp >= r.empN && r.empN > 0 ? "#3B6D11" : "#1A2A4A"}">${fz ? r.fDoneEmp : "—"}</td>
       <td>${r.stageRate == null ? `<span style="color:var(--t2)">—</span>` : barHtml(r.stageRate, true)}</td>
       <td>${barHtml(r.rate)}</td>
       <td><span class="badge ${r.s.storeStudyStatus === "已参训" ? "b-green" : "b-orange"}">${esc(r.s.storeStudyStatus || "-")}</span></td>
       <td style="text-align:center"><button class="btn" style="padding:4px 10px;font-size:12px" onclick="event.stopPropagation();openStore('${r.s.storeId}')">查看明细</button></td>
     </tr>`).join("")}</table>
-    <div style="margin-top:8px;font-size:12px;color:var(--t2)">当前阶段完成情况 = 截至 ${fz ? fz.asOf : "—"} 23:59 已完成（需合格）任务 ÷ 应完成任务，每日凌晨同步时计算一次、白天沿用不刷新${fz && fz.approx ? "（凌晨同步缺失，当前为近似值）" : ""}${fz ? "" : "（冻结统计未生成，待下次凌晨同步）"}；总学习进度 = 全部任务实时完成进度，随每次数据同步更新；点「查看明细」看门店员工学习明细</div>`;
+    <div style="margin-top:8px;font-size:12px;color:var(--t2)">当前阶段已完成人数 = 截至 ${fz ? fz.asOf : "—"} 23:59 当前阶段任务已全部完成（100%）的参训人数；当前阶段完成情况 = 截至 ${fz ? fz.asOf : "—"} 23:59 已完成（需合格）任务 ÷ 应完成任务，每日凌晨同步时计算一次、白天沿用不刷新${fz && fz.approx ? "（凌晨同步缺失，当前为近似值）" : ""}${fz ? "" : "（冻结统计未生成，待下次凌晨同步）"}；总学习进度 = 全部任务实时完成进度，随每次数据同步更新；点「查看明细」看门店员工学习明细</div>`;
 }
 
 /* ---------- 阶段学员明细弹窗 ---------- */
