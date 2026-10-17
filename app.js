@@ -849,13 +849,18 @@ function aggDetailTable(p, emps) {
       // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计入
       // 必修课列=图文/视频课件(isMediaT)，与实操/考试列互不重叠（2026-10-14 Rain 定稿）
       const learn = sts.filter(isMediaT);
+      // 实操=上传/实操考核(type5，如拼盘上传)：日格此前没有显示位 → 阶段完成情况的「进行中/未开始」
+      // 在明细里看不出缺什么（10/17 Rain 对账发现）。合格口径与 stageRequired 一致=examPassT（已上传未打分=待审核也算未完成）
+      const prax = sts.filter(t => t[1] === 5);
       let scoreStr = "";
       if (exams.length) {
         // 多科竖排，每科一行，避免横向超出格子；无考试则不显示该行
         scoreStr = `<div>${exams.map(t => scoreCell(t, false)).join("</div><div>")}</div>`;
       }
       const learnStr = learn.length ? `<div style="font-size:11px;color:${learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">必修课 ${cnt(learn)}</div>` : "";
-      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div>${scoreStr}${learnStr}</td>`;
+      const pDone = prax.filter(t => examPassT(t)).length;
+      const praxStr = prax.length ? `<div style="font-size:11px;font-weight:${pDone < prax.length ? 600 : 400};color:${pDone < prax.length ? "#e64340" : "var(--t2)"}">实操 ${pDone}/${prax.length}</div>` : "";
+      return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div>${scoreStr}${praxStr}${learnStr}</td>`;
     }).join("");
     return `<tr><td style="white-space:nowrap">${esc(e.empName)}</td><td style="white-space:nowrap">${esc(storeOf(e))}</td><td style="text-align:center;white-space:nowrap">${attCnt}/${stageNames.length}</td><td style="text-align:center">${stat ? `${stat.done}/${stat.total}` : "-"}</td>${dayCells}</tr>`;
   }).join("");
