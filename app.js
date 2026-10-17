@@ -2027,7 +2027,8 @@ function render() {
     bar.style.display = "flex";
     bar.innerHTML = `<button class="${state.promoSub === "学习地图" ? "active" : ""}" onclick="state.promoSub='学习地图';state.promoMapIdx=0;render()">学习地图（晋升阶梯）</button>
       <button class="${state.promoSub === "培训计划" ? "active" : ""}" onclick="state.promoSub='培训计划';render()">晋升培训计划</button>` +
-      `<button class="${state.promoSub === "晋升报名" ? "active" : ""}" onclick="state.promoSub='晋升报名';render()">晋升报名管理</button>`;
+      (window._localSvc ? `<button class="${state.promoSub === "晋升报名" ? "active" : ""}" onclick="state.promoSub='晋升报名';render()">晋升报名管理</button>` : ""); // 仅本机可见（10/17 恢复门禁）
+    if (!window._localSvc && state.promoSub === "晋升报名") state.promoSub = "学习地图";
   } else bar.style.display = "none";
   // 直营数据独立时间控制（state.dRange 自有「全部/本月数据/上月数据」按钮，不受看板全局筛选影响）：
   // 直营页隐藏全局时间条，避免误以为全局条能控制直营数据（9/19 用户拍板）
