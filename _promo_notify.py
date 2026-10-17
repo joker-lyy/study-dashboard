@@ -83,6 +83,8 @@ def judge_progress(data, store, name):
                 for t in st.get("tasks") or []:
                     tn = t.get("taskName") or "?"
                     if str(t.get("status")) != "3":
+                        if "晋升" in tn and "考核" in tn:
+                            continue  # 10/17 Rain 定稿：待培训部安排考核不算不符合
                         detail.append("%s：%s（未完成）" % (st.get("stageName") or "", tn))
                     else:
                         score = t.get("realScore") or "-"

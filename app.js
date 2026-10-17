@@ -2633,9 +2633,10 @@ window.sharePng = async function (mode) {
       }).join("") + `</table>`;
   }
 
-  /* ---- 学习进度判定（与 _promo_notify.py judge_progress 同口径 + 职位层级匹配）----
-     提报某职位 = 该职位及之前的所有晋升地图：进度100% 且 已发布任务全部完成(status=3)、
-     考核/考试/练习类任务分数≥80。未满足 → 罗列未完成/未达标明细。 */
+  /* ---- 学习进度判定（10/17 Rain 定稿口径）----
+     符合晋升条件 = ①本职位之前的所有晋升地图全部学完且考核通过（≥80分）
+     ②本职位地图除「待培训部安排考核」的晋升考核外全部完成。
+     晋升考核未安排只提示不判❌；「学习任务学习」计划仅展示、不参与判定。 */
   function psNorm(s) { return String(s || "").replace(/ /g, "").replace(/\u3000/g, "").trim(); }
   function psMapRank(n) {
     n = n || "";
@@ -2703,13 +2704,14 @@ window.sharePng = async function (mode) {
             if (!isNaN(sc) && sc < 80 && /考核|考试|练习/.test(tn)) mtasks.push(esc((st.stageName || "") + "：" + tn + " " + sc + "分（未达标）"));
           }
         }));
-        if (examPending) mtasks.push(`<span style="color:#B8860B">晋升考核未完成（待培训部安排考核）</span>`);
+        /* 10/17 Rain 定稿：「待培训部安排考核」不算不符合——晋升考核未安排只提示，不判❌ */
       }
       const mapOk = !mtasks.length;
       if (!mapOk) allDone = false;
       let seg = `<b style="cursor:pointer;text-decoration:underline dotted" onclick="psMapDetail('${String(e.employeeId).replace(/'/g, "")}','${String(mp.mapId).replace(/'/g, "")}','${esc(nN)}','${esc(sN)}')">${esc(mp.mapName || "")}</b> 进度 ${prog.toFixed(0)}% ${mapOk ? "✅" : "❌"}`;
       if (e.stageName && e.stageName !== "-" && !mapOk) seg += `（当前阶段：${esc(e.stageName)}）`;
       if (mtasks.length) seg += `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${mtasks.join("<br>")}</div>`;
+      else if (examPending) seg += `<div style="color:#B8860B;font-size:12px;margin-top:2px">晋升考核待培训部安排（不影响判定）</div>`;
       else if (!mrec && prog < 100) { seg += `<div style="color:#9aa1af;font-size:12px;margin-top:2px">非直营组学员，未完成任务明细需在学习地图后台查看</div>`; allDone = false; }
       mapSegs.push(seg);
     });
@@ -2728,11 +2730,11 @@ window.sharePng = async function (mode) {
         const done = ts.filter(t => t[2] === "W").length;
         if (!ts.length) return; /* 剔除问卷等后无学习任务 → 整个计划不统计 */
         const ok = done >= ts.length;
-        if (!ok) allDone = false;
+        /* 10/17 Rain 定稿：晋升判定只看学习地图，学习任务计划仅展示不参与判定 */
         line = `<b style="cursor:pointer;text-decoration:underline dotted" onclick="psPlanDetail('${esc(String(pe.employeeId))}','${esc(String(p.planName || "")).replace(/'/g, "\\'")}')">${esc(p.planName || "")}</b> 已学 ${done}/${ts.length} ${ok ? "✅" : "❌"}`;
       } else {
         const ok = pe.trainingStatus === 2;
-        if (!ok) allDone = false;
+        /* 同上：计划整体未完成仅展示，不参与晋升判定 */
         line = `<b>${esc(p.planName || "")}</b> ${ok ? "已完成 ✅" : "整体未完成 ❌"}`;
       }
       asgSegs.push(line);
