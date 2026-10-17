@@ -2027,8 +2027,8 @@ function render() {
     bar.style.display = "flex";
     bar.innerHTML = `<button class="${state.promoSub === "学习地图" ? "active" : ""}" onclick="state.promoSub='学习地图';state.promoMapIdx=0;render()">学习地图（晋升阶梯）</button>
       <button class="${state.promoSub === "培训计划" ? "active" : ""}" onclick="state.promoSub='培训计划';render()">晋升培训计划</button>` +
-      (window._localSvc ? `<button class="${state.promoSub === "晋升报名" ? "active" : ""}" onclick="state.promoSub='晋升报名';render()">晋升报名管理</button>` : ""); // 仅本机可见（10/17 恢复门禁）
-    if (!window._localSvc && state.promoSub === "晋升报名") state.promoSub = "学习地图";
+      /* 晋升报名管理 = 密码门禁（10/17 v145）：入口全设备可见，输对密码才进（远端 Rain 常用电脑可用） */
+      `<button class="${state.promoSub === "晋升报名" ? "active" : ""}" onclick="state.promoSub='晋升报名';render()">晋升报名管理</button>`;
   } else bar.style.display = "none";
   // 直营数据独立时间控制（state.dRange 自有「全部/本月数据/上月数据」按钮，不受看板全局筛选影响）：
   // 直营页隐藏全局时间条，避免误以为全局条能控制直营数据（9/19 用户拍板）
@@ -2748,6 +2748,14 @@ window.sharePng = async function (mode) {
       asgHtml };
   }
 
+  window.psUnlock = function () {
+    const v = (document.getElementById("psPin") || {}).value || "";
+    const err = document.getElementById("psPinErr");
+    if (v.split("").reverse().join("") !== PS_PIN_REV) { if (err) err.textContent = "密码不对，再试试"; return; }
+    sessionStorage.setItem("psOk", "1");
+    renderPromoSignup();
+  };
+
   function psForm(title, rec) {
     const p = rec ? parseName(rec.name) : { name: "", pos: "" };
     let ov = document.getElementById("psFormOv");
@@ -2961,8 +2969,23 @@ window.sharePng = async function (mode) {
     btn.textContent = old; btn.disabled = false;
   };
 
+  /* 密码门禁：PIN 8713（源码里倒序轻混淆，防随手点开；改 PIN 找 Rain 改这行） */
+  const PS_PIN_REV = "3178";
   function renderPromoSignup() {
     const el = document.getElementById("main");
+    if (sessionStorage.getItem("psOk") !== "1") {
+      el.innerHTML = `<div class="sec">
+        <h3>晋升报名管理 <span class="badge b-blue">🔒 限授权人员</span></h3>
+        <div style="font-size:12.5px;color:#7a8399;line-height:1.8;margin:10px 0">
+          本板块含门店人员晋升数据，仅限培训部操作。请输入访问密码（本次打开期间记住，刷新页面需重输）。
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="psPin" type="password" inputmode="numeric" placeholder="访问密码" style="width:160px;padding:9px 12px;border:1px solid #E6E9F0;border-radius:8px;font-size:13px" onkeydown="if(event.key==='Enter')psUnlock()" />
+          <button class="btn" style="padding:9px 20px;background:#185FA5;color:#fff" onclick="psUnlock()">解锁</button>
+          <span id="psPinErr" style="color:#A32D2D;font-size:12.5px"></span>
+        </div></div>`;
+      return;
+    }
     el.innerHTML = `<div class="sec">
       <h3>晋升报名管理 <span class="badge b-blue">本机专用</span></h3>
       <div style="font-size:12.5px;color:#7a8399;line-height:1.8;margin-bottom:10px">
