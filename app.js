@@ -2867,10 +2867,42 @@ window.sharePng = async function (mode) {
     ov.innerHTML = `<div style="background:#fff;border-radius:12px;width:640px;max-width:94vw;max-height:86vh;overflow:auto;padding:20px" onclick="event.stopPropagation()">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
         <b style="font-size:15.5px;color:#1A2A4A">${esc(planName)} 任务明细</b>
+        <div style="display:flex;gap:8px">
+        <button onclick="psModalShot(this)" style="background:#185FA5;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">🖼 快照</button>
         <button onclick="document.getElementById('psMapOv').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">关闭</button>
+        </div>
       </div>
-      <div style="margin-top:12px">${inner}</div></div>`;
+      <div id="psMapCardBody" style="margin-top:12px;background:#fff;padding:6px">${inner}</div></div>`;
     document.body.appendChild(ov);
+  };
+
+  // 明细弹窗快照（10/17）：整卡 html2canvas 出图 → 复制剪贴板
+  window.psModalShot = async function (btn) {
+    const card = document.getElementById("psMapCardBody");
+    if (!card || btn.disabled) return;
+    const old = btn.textContent; btn.textContent = "⏳ 生成中…"; btn.disabled = true;
+    const showTip = html => {
+      let ov = document.getElementById("pngShareTip");
+      if (!ov) { ov = document.createElement("div"); ov.id = "pngShareTip"; ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100003;display:flex;align-items:center;justify-content:center;padding:24px"; document.body.appendChild(ov); }
+      ov.onclick = e => { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:720px;width:100%;padding:18px 20px;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">${html}</div>`;
+      return ov;
+    };
+    try {
+      await window._loadHtml2canvas();
+      const cv = await html2canvas(card, { backgroundColor: "#ffffff", scale: 2, logging: false });
+      const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+      const dataUrl = cv.toDataURL("image/png");
+      let copied = false;
+      try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
+      showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">${copied ? "✅ 图片已复制" : "🖼 图片已生成"}</div>
+        <div style="font-size:12px;color:#7a8399;margin-bottom:10px">${copied ? "直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送。" : "浏览器未自动复制（剪贴板权限受限），可右键图片复制或保存后转发。"}</div>
+        <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
+        </div>`);
+    } catch (e) { alert("生成图片失败：" + (e && e.message || e)); }
+    btn.textContent = old; btn.disabled = false;
   };
 
   // 地图学习明细弹窗（10/17 Rain：点击管理表格里的黑体地图名查看该员工本地图完整学习情况）
@@ -2921,9 +2953,12 @@ window.sharePng = async function (mode) {
           <b style="font-size:15.5px;color:#1A2A4A">${esc(name)} · ${esc(mpName || "学习地图")} 明细</b>
           <div style="font-size:12.5px;color:#7a8399;margin-top:4px">${esc(store || "")}${prog != null ? ` · 总进度 <b style="color:#1A2A4A">${prog.toFixed(0)}%</b>` : ""}${stageName && stageName !== "-" ? ` · 当前阶段：${esc(stageName)}` : ""}</div>
         </div>
+        <div style="display:flex;gap:8px">
+        <button onclick="psModalShot(this)" style="background:#185FA5;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">🖼 快照</button>
         <button onclick="document.getElementById('psMapOv').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">关闭</button>
+        </div>
       </div>
-      <div style="margin-top:12px">${inner}</div></div>`;
+      <div id="psMapCardBody" style="margin-top:12px;background:#fff;padding:6px">${inner}</div></div>`;
     document.body.appendChild(ov);
   };
 
@@ -2969,8 +3004,8 @@ window.sharePng = async function (mode) {
     btn.textContent = old; btn.disabled = false;
   };
 
-  /* 密码门禁：PIN 8713（源码里倒序轻混淆，防随手点开；改 PIN 找 Rain 改这行） */
-  const PS_PIN_REV = "3178";
+  /* 密码门禁：PIN 1015（源码里倒序轻混淆，防随手点开；改 PIN 找 Rain 改这行） */
+  const PS_PIN_REV = "5101";
   function renderPromoSignup() {
     const el = document.getElementById("main");
     if (sessionStorage.getItem("psOk") !== "1") {
