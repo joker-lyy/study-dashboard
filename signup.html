@@ -40,8 +40,9 @@
     <div class="mod">
       <div class="t"><i></i>门店</div>
       <div class="d">请选择提报员工所在的门店</div>
-      <input id="store" list="storeList" placeholder="输入或选择门店名称" />
-      <datalist id="storeList"></datalist>
+      <select id="store">
+        <option value="">请选择门店</option>
+      </select>
     </div>
     <div class="mod">
       <div class="t"><i></i>姓名</div>
@@ -70,9 +71,10 @@
 const ANON = "sb_publishable_bMQvqugXZvjgs9w5y_2ZJA_LETBEnjO";
 const URL_BASE = "https://furiqmhvflnjllrwfhyw.supabase.co/rest/v1/puzzle_records";
 const esc = s => s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-// 门店候选：仅 8 家直营店（2026-10-15 Rain：加盟店暂不开放，后续有需要再扩）
+// 门店候选：9 家直营店（select 下拉，datalist 在手机/企微内置浏览器弹不出候选 10/17 修复）
 const DIRECT_STORES = ["广州佳润广场店","广州天河正佳广场店","广州海珠同创店","中山康华店","中山利和店","中山悦盈店","中山黄圃店","中山远洋城店","珠海横琴励骏庞都广场店"];
-document.getElementById("storeList").innerHTML = DIRECT_STORES.map(s => `<option value="${esc(s)}">`).join("");
+document.getElementById("store").innerHTML =
+  `<option value="">请选择门店</option>` + DIRECT_STORES.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
 document.getElementById("pos").addEventListener("change", function () {
   document.getElementById("otherPos").style.display = this.value === "__other" ? "block" : "none";
 });

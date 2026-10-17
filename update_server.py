@@ -334,6 +334,20 @@ class H(SimpleHTTPRequestHandler):
         pass
 
 
+def promo_notify_loop():
+    """每 2 分钟跑一次 _promo_notify.py：轮询新晋升提报 → 判定学习进度 → 推企微。
+    断点在 data/promo_state.json（lastTs），服务停摆期间漏的会在下次启动补推。"""
+    py = sys.executable
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_promo_notify.py")
+    while True:
+        try:
+            subprocess.run([py, script], capture_output=True, timeout=300,
+                           creationflags=_CREATIONFLAGS)
+        except Exception as e:
+            print("[promo-notify] loop err:", e)
+        time.sleep(120)
+
+
 def idle_guard():
     """关掉网页后自动退出（Rain 要求：不留后台和黑框）。正在更新时不退。"""
     while True:
@@ -350,6 +364,7 @@ if __name__ == "__main__":
     touch()
     _ensure_butler()
     threading.Thread(target=idle_guard, daemon=True).start()
+    threading.Thread(target=promo_notify_loop, daemon=True).start()
     try:
         ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
     except OSError:
