@@ -2551,7 +2551,7 @@ window.sharePng = async function (mode) {
   const SB_URL = "https://furiqmhvflnjllrwfhyw.supabase.co/rest/v1/puzzle_records";
   const SB_KEY = "sb_publishable_bMQvqugXZvjgs9w5y_2ZJA_LETBEnjO";
   const DIRECT_STORES = ["广州佳润广场店","广州天河正佳广场店","广州海珠同创店","中山康华店","中山利和店","中山悦盈店","中山黄圃店","中山远洋城店","珠海横琴励骏庞都广场店"];
-  const POSITIONS = ["初级师傅","中级师傅","星级师傅","初级店长"];
+  const POSITIONS = ["转正","初级师傅","中级师傅","星级师傅","初级店长"];
   const sbHeaders = () => ({ "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" });
   const fmtT = ts => { const n = +ts; if (!n) return "—"; const d = new Date(n); const p = x => String(x).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()); };
   const parseName = raw => { try { const o = JSON.parse(raw); return { name: o.name || "", pos: o.position || "" }; } catch (e) { return { name: String(raw || ""), pos: "" }; } };
