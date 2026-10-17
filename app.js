@@ -1024,7 +1024,8 @@ function renderStageModal() {
   const plans = plansInRange(state.cat);
   const p = plans[state.planIdx];
   const due = dueDateOf(p, stageName);
-  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + (stageDayLabel(p, stageName) || stageName) + " · 学习明细" + (p.startDate ? ` 【任务发布时间：${p.startDate}】` : "") + (due ? ` 【应完成日期：${due}】` : "");
+  document.getElementById("mTitle").textContent = (p.planName || "") + " · " + (stageDayLabel(p, stageName) || stageName) + " · 学习明细";
+  state.__stageDateMeta = (p.startDate ? `任务发布：${p.startDate}` : "") + (due ? `　应完成：${due}` : "");
   let emps = (p.emps || []).filter(e => statusOf(e) != null);
   const allGroups = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
   const gset = state.dGroups, rset = state.dRegions;
@@ -1118,7 +1119,24 @@ function renderStageModal() {
     </tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">说明：必修课/考试/实操/进度均为<b>该阶段</b>口径；出勤=平台面授签到记录（已签到/未签到/请假按慧运营后台实际考勤显示，2026-10-09 起；已签到旁的时间为该课任务完成时间），请假=平台考勤登记或培训部手工名单，请假当天不计出勤；分数为当天全部考核成绩（多科以 / 隔开，上方 x/y 为考试科数，与必修课、实操相加=阶段进度），<b>缺考=当天有考核但未提交，待阅卷=已提交待老师阅卷，—=当天无考核安排</b>，红色=该科未达80分。<b>「已完成」= 上传作业 + 老师已阅卷 + 考试及格（≥80）；待阅卷/待审核 单独标注（黄色），统计上计入未完成；课题名带「考核」的任务未提交同样计入应完成。</b>「上传拼盘实操考核图片」与「上传慧运营的拼盘学习工具考核截图」同权（fix206）：均为真实考核（老师打分）——未上传=未完成、已上传未打分=待审核（黄）、已打分=已完成（N分，&lt;80 ✗ 未通过）。<b>所有考核打分 &lt;80 分一律显示 ✗ 未通过（红）并计入未完成。</b></div>
+    ${state.__stageDateMeta ? `<div style="font-size:12px;color:var(--t2);margin-bottom:6px">${state.__stageDateMeta}</div>` : ""}
+    <details style="margin-bottom:8px;font-size:12px;color:var(--t2)">
+      <summary style="cursor:pointer;user-select:none;font-weight:600;color:var(--t1)">📖 口径说明（点击展开/收起）</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;margin-top:6px;line-height:1.6">
+        <div>· <b>口径范围：</b>必修课/考试/实操/进度均为<b>该阶段</b>口径</div>
+        <div>· <b>出勤：</b>平台面授真实考勤（10-09 起）；已签到旁时间=该课任务完成时间</div>
+        <div>· <b>请假：</b>平台考勤登记 或 培训部手工名单，当天不计出勤</div>
+        <div>· <b>考试分数：</b>当天全部考核成绩，多科以 / 隔开；x/y=考试科数</div>
+        <div>· <b>缺考：</b>当天有考核但未提交；<b>待阅卷：</b>已提交待老师阅卷</div>
+        <div>· <b>—：</b>当天无考核安排</div>
+        <div>· <b>红色分数：</b>该科未达 80 分</div>
+        <div>· <b>已完成：</b>上传作业 + 老师已阅卷 + 考试及格（≥80）</div>
+        <div>· <b>待阅卷/待审核：</b>黄色单独标注，统计上计入未完成</div>
+        <div>· <b>带「考核」任务：</b>未提交同样计入应完成</div>
+        <div>· <b>拼盘两件套同权（fix206）：</b>拼盘实操考核图片 + 慧运营拼盘工具截图均=真实考核（老师打分）</div>
+        <div>· <b>未通过：</b>所有考核打分 &lt;80 一律 ✗ 未通过（红）并计入未完成</div>
+      </div>
+    </details>
     <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px">
       <b>组别：</b>${boxes("Groups", gset, allGroups)}
     </div>
