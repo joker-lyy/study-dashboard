@@ -2260,7 +2260,6 @@ window.sharePng = async function (mode) {
     const fname = title.replace(/[\\/:*?"<>|]/g, "").trim() + ".png";
     if (copied) {
       showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">✅ 图片已复制</div>
-        <div style="font-size:12px;color:#7a8399;margin-bottom:10px">直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送，无需保存文件。</div>
         <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
           <a download="${fname}" href="${dataUrl}" style="background:#f0f2f7;color:#1A2A4A;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;text-decoration:none">下载文件</a>
@@ -2516,8 +2515,7 @@ window.sharePng = async function (mode) {
       try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
       if (copied) {
         showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">✅ 「${esc(storeName)}」图片已复制</div>
-          <div style="font-size:12px;color:#7a8399;margin-bottom:10px">直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送，无需保存文件。</div>
-          <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
+            <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
             <button id="drCopyBtn" onclick="_drCopyRetry()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">重新复制</button>
             <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
@@ -2908,7 +2906,7 @@ window.sharePng = async function (mode) {
       let copied = false;
       try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
       showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">${copied ? "✅ 图片已复制" : "🖼 图片已生成"}</div>
-        <div style="font-size:12px;color:#7a8399;margin-bottom:10px">${copied ? "直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送。" : "浏览器未自动复制（剪贴板权限受限），可右键图片复制或保存后转发。"}</div>
+        ${copied ? "" : `<div style="font-size:12px;color:#7a8399;margin-bottom:10px">浏览器未自动复制（剪贴板权限受限），可右键图片复制或保存后转发。</div>`}
         <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
           <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
@@ -3035,7 +3033,7 @@ window.sharePng = async function (mode) {
         let copied = false;
         try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
         showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">${copied ? "✅ 图片已复制" : "🖼 图片已生成"}</div>
-          <div style="font-size:12px;color:#7a8399;margin-bottom:10px">${copied ? "直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送。" : "浏览器未自动复制（剪贴板权限受限），可右键图片复制或保存后转发。"}</div>
+          ${copied ? "" : `<div style="font-size:12px;color:#7a8399;margin-bottom:10px">浏览器未自动复制（剪贴板权限受限），可右键图片复制或保存后转发。</div>`}
           <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
             <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
@@ -3177,7 +3175,7 @@ window.sharePng = async function (mode) {
         let copied = false;
         try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
         showTip(`<div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">${copied ? "✅ 图片已复制" : "🖼 图片已生成"}</div>
-          <div style="font-size:12px;color:#7a8399;margin-bottom:10px">${copied ? "直接到微信/企微聊天窗口 <b>Ctrl+V 粘贴</b>即可发送。" : "浏览器未自动复制（剪贴板权限受限），可右键图片复制或保存后转发。"}</div>
+          ${copied ? "" : `<div style="font-size:12px;color:#7a8399;margin-bottom:10px">浏览器未自动复制（剪贴板权限受限），可右键图片复制或保存后转发。</div>`}
           <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
             <button onclick="document.getElementById('pngShareTip').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>
