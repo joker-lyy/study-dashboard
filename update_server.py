@@ -127,8 +127,9 @@ def _promo_relay(method, qs, body=None):
         return 502, {"ok": False, "msg": "浏览器中继不可用（缺 node 或 _promo_relay.js）"}
     payload = json.dumps({"method": method, "qs": qs, "body": body}).encode("utf-8")
     try:
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0  # 10/17 修复：弹黑色 node 窗
         r = subprocess.run([node, relay], input=payload, capture_output=True, timeout=120,
-                           cwd=os.path.dirname(relay) or ".")
+                           cwd=os.path.dirname(relay) or ".", creationflags=flags)
         out = (r.stdout or b"").decode("utf-8", "ignore").strip().splitlines()
         j = json.loads(out[-1]) if out else {}
         return int(j.get("status") or 0), j.get("data")
