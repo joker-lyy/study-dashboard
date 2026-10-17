@@ -2257,7 +2257,11 @@ window.sharePng = async function (mode) {
         // html2canvas 对 position:fixed 祖先内的元素会按视口高度裁剪 → 截图瞬间把遮罩改为 static
         const oldPos = modal.style.position, oldPad = modal.style.padding, oldOv = modal.style.overflow;
         modal.style.position = "static"; modal.style.padding = "0"; modal.style.overflow = "visible";
-        restore = () => { target.style.maxHeight = oldM; target.style.overflow = oldO; if (mb) mb.style.overflow = oldB; modal.style.position = oldPos; modal.style.padding = oldPad; modal.style.overflow = oldOv; };
+        // html2canvas 1.4.1 不支持 CSS grid 且对 <details> 渲染异常 → 截图瞬间强制展开说明并降级 grid 为 block，截完还原
+        const fixups = [];
+        modal.querySelectorAll("details").forEach(d => { fixups.push([d, "open", d.open]); d.open = true; });
+        modal.querySelectorAll("[style*='grid-template-columns']").forEach(g => { fixups.push([g, "display", g.style.display], [g, "grid-template-columns", g.style.gridTemplateColumns]); g.style.display = "block"; g.style.gridTemplateColumns = "none"; });
+        restore = () => { target.style.maxHeight = oldM; target.style.overflow = oldO; if (mb) mb.style.overflow = oldB; modal.style.position = oldPos; modal.style.padding = oldPad; modal.style.overflow = oldOv; fixups.forEach(([el, k, v]) => { if (k === "open") el.open = v; else el.style[k] = v; }); };
       }
     }
     const title = mode === "all"
