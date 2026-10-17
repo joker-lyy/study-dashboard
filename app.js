@@ -2849,17 +2849,27 @@ window.sharePng = async function (mode) {
     if (!det || !det.stages) {
       inner = `<div style="color:#9aa1af;font-size:13px;padding:12px 0">该计划无本员工的任务明细数据（按整体状态展示）</div>`;
     } else {
-      const rows = [];
-      det.stages.forEach(s => (s.t || []).forEach(t => {
-        if ([3, 6, 11].includes(+t[1])) return; /* 与主口径一致：面授/问卷/练习不统计 */
-        const done = t[2] === "W";
-        rows.push(`<tr>
-          <td style="padding:6px 10px;border-bottom:1px solid #eef0f4">${esc(t[0] || "?")}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eef0f4;color:${done ? "#3B6D11" : "#A32D2D"};font-weight:600;white-space:nowrap">${done ? "已完成" : "未完成"}</td></tr>`);
-      }));
-      inner = rows.length
-        ? `<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">学习任务</th><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">状态</th></tr>${rows.join("")}</table>`
-        : `<div style="color:#9aa1af;font-size:13px;padding:12px 0">剔除面授/问卷/练习后该计划无学习任务</div>`;
+      /* 按类别（考试/实操/视频/图文…）分组呈现（10/17 Rain） */
+      const TYPE_ORDER = ["理论/考试", "实操", "视频", "图文", "表单", "练习", "其他"];
+      const all = det.stages.reduce((a, s) => a.concat(s.t || []), []);
+      const groups = {};
+      all.forEach(t => {
+        if ([3, 6, 11].includes(+t[1])) return; /* 面授/问卷/练习不统计 */
+        const lbl = psTypeLabel(t[1]);
+        (groups[lbl] = groups[lbl] || []).push(t);
+      });
+      let total = 0, doneN = 0;
+      const secs = TYPE_ORDER.filter(l => groups[l]).map(l => {
+        const items = groups[l];
+        const okN = items.filter(t => t[2] === "W").length;
+        total += items.length; doneN += okN;
+        const lines = items.map(t => {
+          const done = t[2] === "W";
+          return `<div style="padding:3px 0 3px 14px;font-size:12.5px">· ${esc(t[0] || "?")} —— <span style="color:${done ? "#3B6D11" : "#A32D2D"};font-weight:600">${done ? "✅ 已完成" : "❌ 未完成"}</span></div>`;
+        }).join("");
+        return `<div style="margin-top:6px"><b style="font-size:12.5px;color:#1A2A4A">${l}：</b><span style="font-size:11.5px;color:#7a8399">已完成 ${okN}/${items.length}</span>${lines}</div>`;
+      }).join("");
+      inner = `<div style="font-size:12.5px;color:#1A2A4A;background:#f0f5ff;border:1px solid #dfe7f5;border-radius:8px;padding:8px 12px"><b>已完成任务：</b>${doneN}/${total}（面授/问卷/练习不统计）</div>${secs || `<div style="color:#9aa1af;font-size:13px;padding:8px 0">剔除后无学习任务</div>`}`;
     }
     let ov = document.getElementById("psMapOv");
     if (ov) ov.remove();
@@ -2908,6 +2918,30 @@ window.sharePng = async function (mode) {
   };
 
   // 地图学习明细弹窗（10/17 Rain：点击管理表格里的黑体地图名查看该员工本地图完整学习情况）
+  /* 任务类型 → 中文分类（10/17 Rain：明细弹窗按类别分组呈现，考试：/实操：/视频：…） */
+  function psTypeLabel(ty) {
+    ty = +ty;
+    if (ty === 4) return "理论/考试";
+    if (ty === 5) return "实操";
+    if (ty === 2 || ty === 8) return "视频";
+    if (ty === 1 || ty === 10) return "图文";
+    if (ty === 3) return "面授";
+    if (ty === 6) return "问卷";
+    if (ty === 7) return "表单";
+    if (ty === 11) return "练习";
+    return "其他";
+  }
+  function psTaskLine(t, exam) {
+    const done = String(t.status) === "3";
+    const sc = parseFloat(t.realScore);
+    const badScore = done && !isNaN(sc) && sc < 80 && /考核|考试|练习/.test(t.taskName || "");
+    const stTxt = exam && !done ? "待安排考核" : (done ? (badScore ? "✗ 未通过" : "✅ 已完成") : "❌ 未完成");
+    const stColor = done ? (badScore ? "#A32D2D" : "#3B6D11") : (exam ? "#B8860B" : "#A32D2D");
+    const scTxt = done && !isNaN(sc) ? ` · <b style="color:${badScore ? "#A32D2D" : "#1A2A4A"}">${sc}分</b>` : "";
+    const tmTxt = t.finishTime && t.finishTime !== "-" ? ` <span style="color:#9aa1af">(${esc(String(t.finishTime).slice(5, 16))})</span>` : "";
+    return `<div style="padding:3px 0 3px 14px;font-size:12.5px">· ${esc(t.taskName || "?")} —— <span style="color:${stColor};font-weight:600">${stTxt}</span>${scTxt}${tmTxt}</div>`;
+  }
+
   window.psMapDetail = function (empId, mapId, name, store) {
     const dmEmps = (DATA.directMaps || {}).emps || {};
     const rec = dmEmps[String(empId)];
@@ -2922,26 +2956,31 @@ window.sharePng = async function (mode) {
     if (!mrec || !(mrec.stages || []).length) {
       inner = `<div style="color:#9aa1af;font-size:13px;padding:12px 0">非直营组学员，未完成任务明细需在学习地图后台查看${prog != null ? `（当前进度 ${prog.toFixed(0)}%）` : ""}</div>`;
     } else {
-      const rows = [];
-      mrec.stages.forEach(st => {
-        rows.push(`<tr><td colspan="4" style="background:#f0f2f7;font-weight:700;color:#1A2A4A;padding:6px 10px">${esc(st.stageName || "")}</td></tr>`);
+      /* 按阶段 → 类别（考试/实操/视频/图文…）分组呈现（10/17 Rain：别堆一起，人家看不懂） */
+      const TYPE_ORDER = ["理论/考试", "实操", "视频", "图文", "面授", "表单", "问卷", "练习", "其他"];
+      let total = 0, doneN = 0;
+      const stageBlocks = mrec.stages.map(st => {
+        const groups = {};
         (st.tasks || []).forEach(t => {
-          const done = String(t.status) === "3";
-          const sc = parseFloat(t.realScore);
-          const badScore = done && !isNaN(sc) && sc < 80 && /考核|考试|练习/.test(t.taskName || "");
-          const exam = /晋升.*考核/.test(t.taskName || "");
-          const stTxt = exam && !done ? "待安排考核" : (done ? "已完成" : "未完成");
-          const stColor = done ? (badScore ? "#A32D2D" : "#3B6D11") : (exam ? "#B8860B" : "#A32D2D");
-          rows.push(`<tr>
-            <td style="padding:6px 10px;border-bottom:1px solid #eef0f4">${esc(t.taskName || "?")}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #eef0f4;color:${stColor};font-weight:600;white-space:nowrap">${stTxt}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #eef0f4;white-space:nowrap">${done && !isNaN(sc) ? `<b style="color:${badScore ? "#A32D2D" : "#1A2A4A"}">${sc}分</b>` : "—"}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #eef0f4;color:#7a8399;white-space:nowrap">${esc(t.completionTime && t.completionTime !== "-" ? String(t.completionTime).slice(0, 16) : "—")}</td></tr>`);
+          const lbl = psTypeLabel(t.taskType);
+          (groups[lbl] = groups[lbl] || []).push(t);
+          total++; if (String(t.status) === "3") doneN++;
         });
-      });
-      inner = `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
-        <tr><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">学习任务</th><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">状态</th><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">分数</th><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">完成时间</th></tr>
-        ${rows.join("")}</table>`;
+        const secs = TYPE_ORDER.filter(l => groups[l]).map(l => {
+          const items = groups[l];
+          const okN = items.filter(t => String(t.status) === "3").length;
+          const exam = l === "理论/考试";
+          return `<div style="margin-top:6px"><b style="font-size:12.5px;color:#1A2A4A">${l}：</b><span style="font-size:11.5px;color:#7a8399">已完成 ${okN}/${items.length}</span>${items.map(t => psTaskLine(t, exam && /晋升.*考核/.test(t.taskName || ""))).join("")}</div>`;
+        }).join("");
+        const sOkN = (st.tasks || []).filter(t => String(t.status) === "3").length;
+        return `<div style="margin-top:10px;padding:8px 10px;background:#f8f9fc;border-radius:8px">
+          <b style="font-size:13px;color:#1A2A4A">${esc(st.stageName || "")}</b>
+          <span style="font-size:11.5px;color:#7a8399;margin-left:8px">阶段任务已完成 ${sOkN}/${(st.tasks || []).length}</span>
+          ${secs}</div>`;
+      }).join("");
+      inner = `<div style="font-size:12.5px;color:#1A2A4A;background:#f0f5ff;border:1px solid #dfe7f5;border-radius:8px;padding:8px 12px">
+          <b>总进度：</b>${prog != null ? prog.toFixed(0) + "%" : "—"}　<b>已完成任务：</b>${doneN}/${total}${stageName && stageName !== "-" ? `　<b>当前阶段：</b>${esc(stageName)}` : ""}
+        </div>${stageBlocks}`;
     }
     let ov = document.getElementById("psMapOv");
     if (ov) ov.remove();
