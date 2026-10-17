@@ -2707,7 +2707,7 @@ window.sharePng = async function (mode) {
       }
       const mapOk = !mtasks.length;
       if (!mapOk) allDone = false;
-      let seg = `<b>${esc(mp.mapName || "")}</b> 进度 ${prog.toFixed(0)}% ${mapOk ? "✅" : "❌"}`;
+      let seg = `<b style="cursor:pointer;text-decoration:underline dotted" onclick="psMapDetail('${String(e.employeeId).replace(/'/g, "")}','${String(mp.mapId).replace(/'/g, "")}','${esc(nN)}','${esc(sN)}')">${esc(mp.mapName || "")}</b> 进度 ${prog.toFixed(0)}% ${mapOk ? "✅" : "❌"}`;
       if (e.stageName && e.stageName !== "-" && !mapOk) seg += `（当前阶段：${esc(e.stageName)}）`;
       if (mtasks.length) seg += `<div style="color:#A32D2D;font-size:12px;margin-top:2px">${mtasks.join("<br>")}</div>`;
       else if (!mrec && prog < 100) { seg += `<div style="color:#9aa1af;font-size:12px;margin-top:2px">非直营组学员，未完成任务明细需在学习地图后台查看</div>`; allDone = false; }
@@ -2729,7 +2729,7 @@ window.sharePng = async function (mode) {
         if (!ts.length) return; /* 剔除问卷等后无学习任务 → 整个计划不统计 */
         const ok = done >= ts.length;
         if (!ok) allDone = false;
-        line = `<b>${esc(p.planName || "")}</b> 已学 ${done}/${ts.length} ${ok ? "✅" : "❌"}`;
+        line = `<b style="cursor:pointer;text-decoration:underline dotted" onclick="psPlanDetail('${esc(String(pe.employeeId))}','${esc(String(p.planName || "")).replace(/'/g, "\\'")}')">${esc(p.planName || "")}</b> 已学 ${done}/${ts.length} ${ok ? "✅" : "❌"}`;
       } else {
         const ok = pe.trainingStatus === 2;
         if (!ok) allDone = false;
@@ -2826,6 +2826,97 @@ window.sharePng = async function (mode) {
       }
       psErr(""); psLoad();
     } catch (e) { psErr("删除失败：" + (e.message || e)); }
+  };
+
+  // 计划学习明细弹窗（10/17：点击「学习任务学习」列粗体计划名查看该员工本计划任务明细）
+  window.psPlanDetail = function (empId, planName) {
+    let plan = null;
+    (DATA.plans || []).forEach(p => {
+      if ((p.planName || "") === planName && (p.category || p.categoryName || "") === "线上线下培训") plan = p;
+    });
+    const det = plan && plan.empDetails && plan.empDetails[String(empId)];
+    let inner;
+    if (!det || !det.stages) {
+      inner = `<div style="color:#9aa1af;font-size:13px;padding:12px 0">该计划无本员工的任务明细数据（按整体状态展示）</div>`;
+    } else {
+      const rows = [];
+      det.stages.forEach(s => (s.t || []).forEach(t => {
+        if ([3, 6, 11].includes(+t[1])) return; /* 与主口径一致：面授/问卷/练习不统计 */
+        const done = t[2] === "W";
+        rows.push(`<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #eef0f4">${esc(t[0] || "?")}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eef0f4;color:${done ? "#3B6D11" : "#A32D2D"};font-weight:600;white-space:nowrap">${done ? "已完成" : "未完成"}</td></tr>`);
+      }));
+      inner = rows.length
+        ? `<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">学习任务</th><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">状态</th></tr>${rows.join("")}</table>`
+        : `<div style="color:#9aa1af;font-size:13px;padding:12px 0">剔除面授/问卷/练习后该计划无学习任务</div>`;
+    }
+    let ov = document.getElementById("psMapOv");
+    if (ov) ov.remove();
+    ov = document.createElement("div"); ov.id = "psMapOv";
+    ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px";
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `<div style="background:#fff;border-radius:12px;width:640px;max-width:94vw;max-height:86vh;overflow:auto;padding:20px" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <b style="font-size:15.5px;color:#1A2A4A">${esc(planName)} 任务明细</b>
+        <button onclick="document.getElementById('psMapOv').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">关闭</button>
+      </div>
+      <div style="margin-top:12px">${inner}</div></div>`;
+    document.body.appendChild(ov);
+  };
+
+  // 地图学习明细弹窗（10/17 Rain：点击管理表格里的黑体地图名查看该员工本地图完整学习情况）
+  window.psMapDetail = function (empId, mapId, name, store) {
+    const dmEmps = (DATA.directMaps || {}).emps || {};
+    const rec = dmEmps[String(empId)];
+    const mrec = rec && (rec.maps || []).find(m => String(m.mapId) === String(mapId));
+    let prog = null, stageName = "";
+    (DATA.maps || []).forEach(mp => {
+      if ((mp.categoryName || "") !== "晋升" || String(mp.mapId) !== String(mapId)) return;
+      const e = (mp.emps || []).find(x => String(x.employeeId) === String(empId));
+      if (e) { prog = +e.completionSchedule || 0; stageName = e.stageName || ""; }
+    });
+    let inner;
+    if (!mrec || !(mrec.stages || []).length) {
+      inner = `<div style="color:#9aa1af;font-size:13px;padding:12px 0">非直营组学员，未完成任务明细需在学习地图后台查看${prog != null ? `（当前进度 ${prog.toFixed(0)}%）` : ""}</div>`;
+    } else {
+      const rows = [];
+      mrec.stages.forEach(st => {
+        rows.push(`<tr><td colspan="4" style="background:#f0f2f7;font-weight:700;color:#1A2A4A;padding:6px 10px">${esc(st.stageName || "")}</td></tr>`);
+        (st.tasks || []).forEach(t => {
+          const done = String(t.status) === "3";
+          const sc = parseFloat(t.realScore);
+          const badScore = done && !isNaN(sc) && sc < 80 && /考核|考试|练习/.test(t.taskName || "");
+          const exam = /晋升.*考核/.test(t.taskName || "");
+          const stTxt = exam && !done ? "待安排考核" : (done ? "已完成" : "未完成");
+          const stColor = done ? (badScore ? "#A32D2D" : "#3B6D11") : (exam ? "#B8860B" : "#A32D2D");
+          rows.push(`<tr>
+            <td style="padding:6px 10px;border-bottom:1px solid #eef0f4">${esc(t.taskName || "?")}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eef0f4;color:${stColor};font-weight:600;white-space:nowrap">${stTxt}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eef0f4;white-space:nowrap">${done && !isNaN(sc) ? `<b style="color:${badScore ? "#A32D2D" : "#1A2A4A"}">${sc}分</b>` : "—"}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eef0f4;color:#7a8399;white-space:nowrap">${esc(t.completionTime && t.completionTime !== "-" ? String(t.completionTime).slice(0, 16) : "—")}</td></tr>`);
+        });
+      });
+      inner = `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <tr><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">学习任务</th><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">状态</th><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">分数</th><th style="text-align:left;padding:6px 10px;color:#7a8399;font-weight:600">完成时间</th></tr>
+        ${rows.join("")}</table>`;
+    }
+    let ov = document.getElementById("psMapOv");
+    if (ov) ov.remove();
+    ov = document.createElement("div"); ov.id = "psMapOv";
+    ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px";
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    const mpName = (mrec && mrec.mapName) || "";
+    ov.innerHTML = `<div style="background:#fff;border-radius:12px;width:720px;max-width:94vw;max-height:86vh;overflow:auto;padding:20px" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <b style="font-size:15.5px;color:#1A2A4A">${esc(name)} · ${esc(mpName || "学习地图")} 明细</b>
+          <div style="font-size:12.5px;color:#7a8399;margin-top:4px">${esc(store || "")}${prog != null ? ` · 总进度 <b style="color:#1A2A4A">${prog.toFixed(0)}%</b>` : ""}${stageName && stageName !== "-" ? ` · 当前阶段：${esc(stageName)}` : ""}</div>
+        </div>
+        <button onclick="document.getElementById('psMapOv').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">关闭</button>
+      </div>
+      <div style="margin-top:12px">${inner}</div></div>`;
+    document.body.appendChild(ov);
   };
 
   // 单行快照：带表头、不含「操作」列 → html2canvas 出图 → 复制剪贴板（同 drSnap 体验）
