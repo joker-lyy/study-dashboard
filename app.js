@@ -2696,7 +2696,9 @@ window.sharePng = async function (mode) {
       if ((mp.categoryName || "") !== "晋升") return;
       const r = psMapRank(mp.mapName || "");
       // 晋升到某职位 = 之前层级（不含本职位）的全部地图都需完成（2026-10-15 Rain 定稿：晋升中级师傅→学到初级师傅即可）
-      if (r < R) (mp.emps || []).forEach(e => {
+      // 转正提报（R=0）：需完成「初级学徒」地图本身 → 用 r <= R；其余晋升沿用 r < R（不含本职位）
+      const need = (pos && /转正/.test(pos)) ? r <= R : r < R;
+      if (need) (mp.emps || []).forEach(e => {
         if (psNorm(e.employeeName) !== nN) return;
         const es = psNorm(e.storeName || "");
         if (!es || (es !== sN && sN.indexOf(es) < 0 && es.indexOf(sN) < 0)) return;
