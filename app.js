@@ -2354,7 +2354,7 @@ window.sharePng = async function (mode) {
         const wait = stt === "DYJ" || t[4] === "待阅卷" || (done && score == null);
         ups.push({ name, stt, score, done, wait });
         if (done && score != null) { uP++; if (hasTime) times.push(tm); }
-        else allDone = false;
+        else if (!wait) allDone = false;
       } else {
         cT++;
         if (done) { cD++; if (hasTime) times.push(tm); } else allDone = false;
@@ -2395,8 +2395,9 @@ window.sharePng = async function (mode) {
       }
       if (!row.uT) lines.push(["上传作业", "—", "na"]);
       else for (const up of row.ups) {
-        if (!up.done) lines.push(["上传作业", up.name + " 缺考", "bad"]);
-        else if (up.wait) lines.push(["上传作业", up.name + " 待审核", "wait"]);
+        // fix(10/28)：DYJ/待阅卷 是已提交待打分，必须先于 !done 判定，否则永远落「缺考」
+        if (up.wait) lines.push(["上传作业", up.name + " 待审核", "wait"]);
+        else if (!up.done) lines.push(["上传作业", up.name + " 缺考", "bad"]);
         else if (up.score >= DR_PASS) lines.push(["上传作业", up.name + " " + up.score + "分", "ok"]);
         else lines.push(["上传作业", up.name + " " + up.score + "分(未过)", "bad"]);
       }
