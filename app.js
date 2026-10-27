@@ -2350,7 +2350,9 @@ window.sharePng = async function (mode) {
         if (pass) { if (hasTime) times.push(tm); } else allDone = false;
       } else if (DR_UP.has(ty)) {
         uT++;
-        ups.push({ name, stt, score, done, wait: done && score == null });
+        // fix(10/27)：DYJ/待阅卷 = 已提交待老师打分 → 待审核，不是缺考（王雪松食安口诀案例）
+        const wait = stt === "DYJ" || t[4] === "待阅卷" || (done && score == null);
+        ups.push({ name, stt, score, done, wait });
         if (done && score != null) { uP++; if (hasTime) times.push(tm); }
         else allDone = false;
       } else {
@@ -2662,7 +2664,7 @@ window.sharePng = async function (mode) {
      符合晋升条件 = ①本职位之前的所有晋升地图全部学完且考核通过（≥80分）
      ②本职位地图除「待培训部安排考核」的晋升考核外全部完成。
      晋升考核未安排只提示不判❌；「学习任务学习」计划仅展示、不参与判定。 */
-  function psNorm(s) { return String(s || "").replace(/ /g, "").replace(/\u3000/g, "").trim(); }
+  function psNorm(s) { return String(s || "").replace(/[ \u3000\u00a0\u200b\u200c\u200d\ufeff]/g, "").trim(); }
   function psMapRank(n) {
     n = n || "";
     if (/初级学徒|转正/.test(n)) return 0;
@@ -2705,9 +2707,24 @@ window.sharePng = async function (mode) {
         hits.push({ mp, e, r });
       });
     });
-    if (!hits.length) return { cls: "na",
-      mapHtml: `<span style="color:#9aa1af">未在学习地图匹配到该员工（核对姓名/门店；或该员工尚未派发晋升地图）</span>`,
-      asgHtml: `<span style="color:#9aa1af">—</span>` };
+    if (!hits.length) {
+      /* fix(10/27)：未匹配时按姓名全局搜晋升地图（忽略门店），把实际找到的门店/地图报出来，
+         避免「直营明细里有地图、提报却显示未匹配」时无从排查（主看板数据只在刷新时加载一次） */
+      const found = [];
+      (DATA.maps || []).forEach(mp => {
+        if ((mp.categoryName || "") !== "晋升") return;
+        (mp.emps || []).forEach(e => {
+          if (psNorm(e.employeeName) !== nN) return;
+          found.push((mp.mapName || "") + "@" + (e.storeName || "?"));
+        });
+      });
+      if (found.length) return { cls: "na",
+        mapHtml: `<span style="color:#b06000">学习地图中找到该员工：<b>${esc(found.join("、"))}</b>；提报门店「${esc(sN)}」与之不一致，请编辑提报或核对地图派发门店</span>`,
+        asgHtml: `<span style="color:#9aa1af">—</span>` };
+      return { cls: "na",
+        mapHtml: `<span style="color:#9aa1af">未在学习地图匹配到该员工（核对姓名/门店；或该员工尚未派发晋升地图）</span>`,
+        asgHtml: `<span style="color:#9aa1af">—</span>` };
+    }
     // 按晋升路径排序：初级学徒→学徒→初级师傅→中级师傅→星级师傅→初级店长→店长→资深店长
     hits.sort((a, b) => (a.r - b.r) || ((+b.e.completionSchedule || 0) - (+a.e.completionSchedule || 0)));
     const dmEmps = (DATA.directMaps || {}).emps || {};
