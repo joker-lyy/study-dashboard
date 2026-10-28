@@ -703,6 +703,7 @@ function pcRenderBody() {
     return a.localeCompare(b, "zh");
   });
   const doneBtn = (k, label, n) => `<button class="btn" style="padding:5px 12px;font-size:12px;${st.done === k ? "" : "background:var(--line);color:var(--t1)"}" onclick="pcSetDone('${k}')">${label} ${n}</button>`;
+  st._inReg = inReg; st._storeMap = storeMap; st._rate = rate; st._agg = agg; st._cur = cur; /* 快照用 */
   /* 人员行按筛选 */
   const showStore = s => {
     const d = storeMap[s].done, u = storeMap[s].undone;
@@ -750,15 +751,85 @@ function pcRenderBody() {
 function pcSetRegion(g) { const st = window.__pc; if (!st) return; st.region = g; pcRenderBody(); }
 function pcSetDone(k) { const st = window.__pc; if (!st) return; st.done = k; pcRenderBody(); }
 function pcToggleStore(s) { const st = window.__pc; if (!st) return; st.exp[s] = !st.exp[s]; pcRenderBody(); }
+/* 公开课两张快照（10/28 Rain）：①区域完成视图（收起门店人员）②首店展开人员明细。
+   html2canvas 出图 → 复制剪贴板 + 预览可下载，同 sharePng 体验。 */
+window.pcSnapshots = async function () {
+  const st = window.__pc; if (!st) return;
+  const card = document.getElementById("pcCard"); if (!card) return;
+  const tip = html => {
+    let ov = document.getElementById("pcSnapTip");
+    if (ov) ov.remove();
+    ov = document.createElement("div"); ov.id = "pcSnapTip";
+    ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100001;display:flex;align-items:center;justify-content:center;padding:24px";
+    ov.innerHTML = `<div style="background:#fff;color:#1A2A4A;border-radius:12px;max-width:640px;width:100%;padding:18px 20px;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">${html}</div>`;
+    document.body.appendChild(ov);
+  };
+  const c = (DATA.publicCourses || []).find(x => x.courseId === st.courseId) || {};
+  const courseName = (c.courseName || "公开课").replace(/[\\/:*?"<>|]/g, "").trim();
+  tip('<div style="font-size:14px">⏳ 正在生成第 1 张（区域完成视图）…</div>');
+  try { await window._loadHtml2canvas(); } catch (e) { tip(`<div style="color:#e64340">html2canvas 加载失败</div>`); return; }
+  const oldExp = { ...st.exp }, oldDone = st.done;
+  const wrap = card.parentElement;  /* position:fixed 遮罩 → 截图瞬间改 static 防裁剪 */
+  const snap = async () => {
+    const oldP = wrap.style.position, oldJ = wrap.style.justifyContent, oldMh = card.style.maxHeight, oldOv = card.style.overflow;
+    const pb = document.getElementById("pcBody"); const oldPbOv = pb ? pb.style.overflow : "";
+    wrap.style.position = "static"; wrap.style.justifyContent = "flex-start";
+    card.style.maxHeight = "none"; card.style.overflow = "visible";
+    if (pb) pb.style.overflow = "visible";
+    const cv = await html2canvas(card, { backgroundColor: "#ffffff", scale: 2, logging: false, useCORS: true, width: card.scrollWidth, height: card.scrollHeight, windowWidth: card.scrollWidth, windowHeight: card.scrollHeight, scrollX: 0, scrollY: 0 });
+    wrap.style.position = oldP; wrap.style.justifyContent = oldJ;
+    card.style.maxHeight = oldMh; card.style.overflow = oldOv;
+    if (pb) pb.style.overflow = oldPbOv;
+    return cv;
+  };
+  const showOne = async (cv, idx, label) => {
+    const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+    let copied = false;
+    try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (e) {}
+    const dataUrl = cv.toDataURL("image/png");
+    const fname = courseName + " " + label + ".png";
+    tip(`<div style="font-size:15px;font-weight:700;margin-bottom:6px">${copied ? "✅ 第 " + idx + " 张已复制" : "🖼 第 " + idx + " 张已生成"}（${label}）</div>
+      <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <a download="${fname}" href="${dataUrl}" style="background:#f0f2f7;color:#1A2A4A;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;text-decoration:none">下载</a>
+        ${idx === 1 ? `<button onclick="pcSnapshots._next()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">生成第 2 张（门店明细）</button>` : `<button onclick="document.getElementById('pcSnapTip').remove()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>`}
+      </div>`, true);
+    return dataUrl;
+  };
+  try {
+    /* 第 1 张：收起全部门店人员、筛选=全部，截区域完成视图 */
+    st.exp = {}; st.done = "all"; pcRenderBody();
+    const cv1 = await snap();
+    await showOne(cv1, 1, "区域完成视图");
+    /* 第 2 张：展开最近完成的门店，截人员明细 */
+    const sm = st._storeMap || {}, inReg = st._inReg || [];
+    const first = inReg.find(s => (sm[s] || {}).done && sm[s].done.length) || inReg[0];
+    window.pcSnapshots._next = async () => {
+      tip('<div style="font-size:14px">⏳ 正在生成第 2 张（门店人员明细）…</div>');
+      try {
+        st.exp = {}; if (first) st.exp[first] = true; st.done = "all"; pcRenderBody();
+        const cv2 = await snap();
+        await showOne(cv2, 2, "门店人员明细" + (first ? " · " + first : ""));
+      } catch (e) { tip(`<div style="color:#e64340">生成失败：${esc(String(e && e.message || e))}</div>`); }
+      finally { st.exp = oldExp; st.done = oldDone; pcRenderBody(); }
+    };
+  } catch (e) {
+    st.exp = oldExp; st.done = oldDone; pcRenderBody();
+    tip(`<div style="color:#e64340">生成失败：${esc(String(e && e.message || e))}</div>`);
+  }
+};
 function pcOpen(courseId, trEl) {
   const m = document.getElementById("pcModal"); if (!m) return;
   const c = (DATA.publicCourses || []).find(x => x.courseId === courseId) || {};
   window.__pc = { courseId, region: "全部", done: "all", exp: {}, rows: [], roster: [], _init: false };
   m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)pcClose()">
-    <div style="background:var(--card);color:var(--t1);border-radius:14px;max-width:860px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
+    <div id="pcCard" style="background:var(--card);color:var(--t1);border-radius:14px;max-width:860px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
       <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
         <div><b style="font-size:15px">${esc(c.courseName || "公开课")}</b><span style="color:var(--t2);font-size:12px;margin-left:10px">按区域 · 门店 · 人员三级查看</span></div>
-        <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcSnapshots()">📸 两张快照</button>
+          <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
+        </div>
       </div>
       <div id="pcBody" style="overflow:auto;padding:12px 18px;font-size:13px;color:var(--t2)">加载中…</div>
     </div></div>`;
