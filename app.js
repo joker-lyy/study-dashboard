@@ -605,7 +605,7 @@ function renderOverview() {
 
 /* ---------- 分类页 ---------- */
 /* 「其他」页签 → 公开课学习情况（2026-10-28）：课程列表来自 data.publicCourses（fetch_study 采集），
-   点课程经本机 8767 服务按需拉员工学习明细（update_server /api/pub_course_emp） */
+   点课程优先经本机 8767 实时拉明细；公共链接降级读静态 data/public_course_emp.json（fetch_study 每日全量抓取） */
 function renderPublicCourses() {
   const el = document.getElementById("main");
   const list = (DATA.publicCourses || []);
@@ -649,23 +649,32 @@ function pcOpen(courseId, trEl) {
       </div>
       <div id="pcBody" style="overflow:auto;padding:12px 18px;font-size:13px;color:var(--t2)">加载中…</div>
     </div></div>`;
-  fetch("http://localhost:8767/api/pub_course_emp?courseId=" + courseId)
+  const renderRows = (rows, srcNote) => {
+    const body = document.getElementById("pcBody"); if (!body) return;
+    const html = (rows || []).map(e => `<tr>
+        <td class="l"><b>${esc(e.n || e.employeeName)}</b></td>
+        <td class="l">${esc(e.s || e.storeName || "-")}</td>
+        <td class="l">${esc(e.r || e.roleName || "-")}</td>
+        <td>${esc(e.t || e.finishTime || "-")}</td></tr>`).join("")
+      || `<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:16px 0">暂无学习记录</td></tr>`;
+    body.innerHTML = `<div style="margin-bottom:8px;color:var(--t2)">共 <b style="color:var(--t1)">${(rows || []).length}</b> 人完成学习${srcNote ? ` <span style="font-size:11px">· ${srcNote}</span>` : ""}</div>
+      <table><tr><th class="l">姓名</th><th class="l">门店</th><th class="l">岗位</th><th>完成时间</th></tr>${html}</table>`;
+  };
+  /* 优先走本机 8767 实时代理；公共链接（无本机服务）降级读静态 data/public_course_emp.json（每日随抓数更新） */
+  fetch("http://localhost:8767/api/pub_course_emp?courseId=" + courseId, { signal: AbortSignal.timeout(4000) })
     .then(r => r.json())
     .then(j => {
-      const body = document.getElementById("pcBody"); if (!body) return;
-      if (!j.ok) { body.innerHTML = `<span style="color:#e6a23c">拉取失败：${esc(j.msg || "未知错误")}</span>`; return; }
-      const rows = (j.rows || []).map(e => `<tr>
-        <td class="l"><b>${esc(e.employeeName)}</b></td>
-        <td class="l">${esc(e.storeName || "-")}</td>
-        <td class="l">${esc(e.roleName || "-")}</td>
-        <td>${esc(e.finishTime || "-")}</td></tr>`).join("")
-        || `<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:16px 0">暂无学习记录</td></tr>`;
-      body.innerHTML = `<div style="margin-bottom:8px;color:var(--t2)">共 <b style="color:var(--t1)">${(j.rows || []).length}</b> 人完成学习</div>
-        <table><tr><th class="l">姓名</th><th class="l">门店</th><th class="l">岗位</th><th>完成时间</th></tr>${rows}</table>`;
+      if (!j.ok) { renderRows([], ""); document.getElementById("pcBody").innerHTML = `<span style="color:#e6a23c">拉取失败：${esc(j.msg || "未知错误")}</span>`; return; }
+      renderRows(j.rows, "实时");
     })
     .catch(() => {
-      const body = document.getElementById("pcBody"); if (!body) return;
-      body.innerHTML = `<span style="color:#e6a23c">本机看板服务(8767)不在线——公开课明细只能在本机查看。双击「启动看板管家.vbs」后再试；课程列表不受影响。</span>`;
+      fetch("data/public_course_emp.json", { cache: "no-store" })
+        .then(r => r.json())
+        .then(j => renderRows((j.courses || {})[String(courseId)] || [], "每日快照 " + (j.generatedAt || "")))
+        .catch(() => {
+          const body = document.getElementById("pcBody"); if (!body) return;
+          body.innerHTML = `<span style="color:#e6a23c">明细数据加载失败，请刷新页面重试。</span>`;
+        });
     });
 }
 

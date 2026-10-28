@@ -812,6 +812,65 @@ def fetch_public_courses(tok):
     print(f"公开课: {len(courses)} 门")
     return courses
 
+def _fetch_one_course_emp(tok, cid):
+    """单门公开课员工学习明细（isStoreEmp=1 在职门店员工，pageSize=100 翻页聚合）。"""
+    rows = []
+    page = 1
+    while page <= 30:
+        body = {"courseId": int(cid), "pageNumber": page, "pageSize": 100,
+                "isStoreEmp": 1, "workStatus": "zc"}
+        req = urllib.request.Request(HOST + "/web/train/report/course/emp/list?version=1",
+                                     data=json.dumps(body).encode(), method="POST")
+        for k, v in [("Content-Type", "application/json"), ("Accept", "*/*"),
+                     ("Origin", "https://zhyy.ruipos.com"), ("Referer", "https://zhyy.ruipos.com/"),
+                     ("token", tok), ("ent", "cjss"), ("timezone", "Asia/Shanghai")]:
+            req.add_header(k, v)
+        j = json.loads(_open(req, what="公开课明细").decode("utf-8"))
+        if j.get("status") != 0:
+            raise RuntimeError(str(j)[:200])
+        d = j.get("data") or {}
+        rows.extend(d.get("list") or [])
+        if d.get("lastPage") or not d.get("list"):
+            break
+        page += 1
+    return rows
+
+def fetch_public_course_emps(tok, courses):
+    """全量公开课学习明细 -> data/public_course_emp.json（静态文件）。
+    10/28 用户指出公共链接（GitHub Pages）没有本机 8767 服务，明细必须静态化随 Pages 部署；
+    本机 8767 代理仍保留（数据更新），前端 8767 不在线时降级读此静态文件。
+    单课失败仅跳过并告警，不中断整批。"""
+    out_path = os.path.join(HERE, "data", "public_course_emp.json")
+    old = {}
+    if os.path.exists(out_path):
+        try:
+            old = json.load(open(out_path, encoding="utf-8")).get("courses") or {}
+        except Exception:
+            old = {}
+    result, fail = {}, []
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futs = {ex.submit(_fetch_one_course_emp, tok, c["courseId"]): c for c in courses}
+        for fu in as_completed(futs):
+            c = futs[fu]
+            try:
+                rows = fu.result()
+                result[str(c["courseId"])] = [
+                    {"n": e.get("employeeName") or "-", "s": e.get("storeName") or "-",
+                     "r": e.get("roleName") or "-", "t": e.get("finishTime") or "-"}
+                    for e in rows]
+            except Exception as e:
+                fail.append(c["courseName"])
+                if str(c["courseId"]) in old:  # 抓失败沿用旧数据，不让明细凭空消失
+                    result[str(c["courseId"])] = old[str(c["courseId"])]
+                print(f"  [警告] 公开课明细抓取失败 {c['courseName']}: {str(e)[:120]}")
+    total = sum(len(v) for v in result.values())
+    payload = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "courses": result}
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False)
+    print(f"公开课明细: {len(result)} 门 / {total} 条学习记录 -> data/public_course_emp.json"
+          + (f"（失败 {len(fail)} 门用旧数据兜底）" if fail else ""))
+    return payload
+
 
 def main():
     tok, role_state = login()
@@ -833,6 +892,8 @@ def main():
     ev, cs = fetch_evaluations()
     maps = fetch_maps(tok)
     direct = fetch_direct_maps(tok, maps)
+    pc = fetch_public_courses(tok)
+    fetch_public_course_emps(tok, pc)  # 静态明细文件（公共链接降级用）
     data = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
             "roleState": role_state,
             "evaluations": ev,
@@ -840,7 +901,7 @@ def main():
             "resigned": fetch_resigned(tok),
             "maps": maps,
             "directMaps": direct,
-            "publicCourses": fetch_public_courses(tok),
+            "publicCourses": pc,
             "categories": list(dict.fromkeys([c for c, _ in CATEGORY_RULES] + [k for k in cats if k not in [x for x, _ in CATEGORY_RULES]])),
             "plans": []}
 
