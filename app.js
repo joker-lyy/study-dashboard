@@ -702,11 +702,8 @@ function pcRenderBody() {
     if (la) return -1; if (lb) return 1;
     return a.localeCompare(b, "zh");
   });
-  const inRegAll = inReg;
-  const inRegF = st._solo ? inReg.filter(s => s === st._solo) : inReg; /* 快照2：仅当前展开门店 */
   const doneBtn = (k, label, n) => `<button class="btn" style="padding:5px 12px;font-size:12px;${st.done === k ? "" : "background:var(--line);color:var(--t1)"}" onclick="pcSetDone('${k}')">${label} ${n}</button>`;
   st._inReg = inReg; st._storeMap = storeMap; st._rate = rate; st._agg = agg; st._cur = cur; /* 快照用 */
-  st._inRegF = inRegF;
   /* 人员行按筛选 */
   const showStore = s => {
     const d = storeMap[s].done, u = storeMap[s].undone;
@@ -714,7 +711,7 @@ function pcRenderBody() {
     if (st.done === "undone") return u.length ? [[], u] : null;
     return [d, u];
   };
-  const storeRows = inRegF.map(s => {
+  const storeRows = inReg.map(s => {
     const du = showStore(s); if (!du) return "";
     const [d, u] = du;
     const total = d.length + u.length, last = d.reduce((m, e) => e.t > m ? e.t : m, "");
@@ -738,14 +735,14 @@ function pcRenderBody() {
     return `<button class="btn" style="padding:5px 10px;font-size:12px;${st.region === g ? "" : "background:var(--line);color:var(--t1)"}" onclick="pcSetRegion('${esc(g).replace(/'/g, "\\'")}')">${esc(g)} <span style="opacity:.7">${rt}%</span></button>`;
   }).join("");
   body.innerHTML = `
-    <div id="pcRegRow" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:12px;color:var(--t2);align-self:center">区域：</span>${regBtns}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:12px;color:var(--t2);align-self:center">区域：</span>${regBtns}</div>
     <div class="cards" style="margin-bottom:10px">
       <div class="card"><div class="k">${cur ? esc(cur) + " · 应学" : "全体应学"}</div><div class="v">${agg.total}</div></div>
       <div class="card"><div class="k">已完成</div><div class="v" style="color:var(--acc)">${agg.done}</div></div>
       <div class="card"><div class="k">未完成</div><div class="v" style="color:#e6a23c">${agg.total - agg.done}</div></div>
       <div class="card"><div class="k">完成率</div><div class="v">${rate}%</div></div>
     </div>
-    <div id="pcDoneRow" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
       ${doneBtn("all", "全部", agg.total)}${doneBtn("done", "已完成", agg.done)}${doneBtn("undone", "未完成", agg.total - agg.done)}
     </div>
     <table><tr><th class="l">门店（点击展开人员）</th><th>完成/应学</th><th class="l">最近完成时间</th><th class="l">状态</th></tr>${storeRows}</table>
@@ -754,8 +751,8 @@ function pcRenderBody() {
 function pcSetRegion(g) { const st = window.__pc; if (!st) return; st.region = g; pcRenderBody(); }
 function pcSetDone(k) { const st = window.__pc; if (!st) return; st.done = k; pcRenderBody(); }
 function pcToggleStore(s) { const st = window.__pc; if (!st) return; st.exp[s] = !st.exp[s]; pcRenderBody(); }
-/* 公开课两张快照（10/29 Rain 定稿）：①当前所选区域的数据表（不带区域/筛选按钮行）
-   ②当前点开的门店，仅该店资料。课程名+发布日期由卡片标题栏自带。 */
+/* 公开课两张快照（10/28 Rain）：①区域完成视图（收起门店人员）②首店展开人员明细。
+   html2canvas 出图 → 复制剪贴板 + 预览可下载，同 sharePng 体验。 */
 window.pcSnapshots = async function () {
   const st = window.__pc; if (!st) return;
   const card = document.getElementById("pcCard"); if (!card) return;
@@ -769,11 +766,9 @@ window.pcSnapshots = async function () {
   };
   const c = (DATA.publicCourses || []).find(x => x.courseId === st.courseId) || {};
   const courseName = (c.courseName || "公开课").replace(/[\\/:*?"<>|]/g, "").trim();
-  const soloStore = Object.keys(st.exp || {}).find(s => st.exp[s]);
-  if (!soloStore) { tip(`<div style="font-size:14px">请先点击展开一家门店，再点快照按钮（第 2 张需要该店明细）</div>`); return; }
   tip('<div style="font-size:14px">⏳ 正在生成第 1 张（区域完成视图）…</div>');
   try { await window._loadHtml2canvas(); } catch (e) { tip(`<div style="color:#e64340">html2canvas 加载失败</div>`); return; }
-  const oldExp = { ...st.exp }, oldSolo = st._solo;
+  const oldExp = { ...st.exp }, oldDone = st.done;
   const wrap = card.parentElement;  /* position:fixed 遮罩 → 截图瞬间改 static 防裁剪 */
   const snap = async () => {
     const oldP = wrap.style.position, oldJ = wrap.style.justifyContent, oldMh = card.style.maxHeight, oldOv = card.style.overflow;
@@ -797,33 +792,29 @@ window.pcSnapshots = async function () {
       <img src="${dataUrl}" style="width:100%;border:1px solid #e3e6ee;border-radius:8px">
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
         <a download="${fname}" href="${dataUrl}" style="background:#f0f2f7;color:#1A2A4A;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;text-decoration:none">下载</a>
-        ${idx === 1 ? `<button onclick="pcSnapshots._next()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">生成第 2 张（${esc(soloStore)} 明细）</button>` : `<button onclick="document.getElementById('pcSnapTip').remove()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>`}
+        ${idx === 1 ? `<button onclick="pcSnapshots._next()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">生成第 2 张（门店明细）</button>` : `<button onclick="document.getElementById('pcSnapTip').remove()" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">完成</button>`}
       </div>`, true);
     return dataUrl;
   };
-  const hideUi = hide => {
-    ["pcRegRow", "pcDoneRow", "pcHdrBtns"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = hide ? "none" : ""; });
-  };
   try {
-    /* 第 1 张：保持用户当前所选区域/筛选，收起门店人员，隐藏按钮行，只截数据 */
-    st.exp = {}; st._solo = null; pcRenderBody();
-    hideUi(true);
+    /* 第 1 张：收起全部门店人员、筛选=全部，截区域完成视图 */
+    st.exp = {}; st.done = "all"; pcRenderBody();
     const cv1 = await snap();
-    hideUi(false);
     await showOne(cv1, 1, "区域完成视图");
+    /* 第 2 张：展开最近完成的门店，截人员明细 */
+    const sm = st._storeMap || {}, inReg = st._inReg || [];
+    const first = inReg.find(s => (sm[s] || {}).done && sm[s].done.length) || inReg[0];
     window.pcSnapshots._next = async () => {
       tip('<div style="font-size:14px">⏳ 正在生成第 2 张（门店人员明细）…</div>');
       try {
-        st._solo = soloStore; st.exp = { [soloStore]: true }; pcRenderBody();  /* 仅渲染该店并保持展开 */
-        hideUi(true);
+        st.exp = {}; if (first) st.exp[first] = true; st.done = "all"; pcRenderBody();
         const cv2 = await snap();
-        hideUi(false);
-        await showOne(cv2, 2, "门店明细 · " + soloStore);
+        await showOne(cv2, 2, "门店人员明细" + (first ? " · " + first : ""));
       } catch (e) { tip(`<div style="color:#e64340">生成失败：${esc(String(e && e.message || e))}</div>`); }
-      finally { st._solo = oldSolo; st.exp = oldExp; pcRenderBody(); }
+      finally { st.exp = oldExp; st.done = oldDone; pcRenderBody(); }
     };
   } catch (e) {
-    st.exp = oldExp; st._solo = oldSolo; pcRenderBody();
+    st.exp = oldExp; st.done = oldDone; pcRenderBody();
     tip(`<div style="color:#e64340">生成失败：${esc(String(e && e.message || e))}</div>`);
   }
 };
@@ -835,7 +826,7 @@ function pcOpen(courseId, trEl) {
     <div id="pcCard" style="background:var(--card);color:var(--t1);border-radius:14px;max-width:860px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
       <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
         <div id="pcTitle"><b style="font-size:15px">${esc(c.courseName || "公开课")}</b>${c.pt ? `<span style="color:var(--t2);font-size:12px;margin-left:10px">📅 发布 ${esc(c.pt)}</span>` : ""}<span style="color:var(--t2);font-size:12px;margin-left:10px">按区域 · 门店 · 人员三级查看</span></div>
-        <div id="pcHdrBtns" style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px">
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcSnapshots()">📸 两张快照</button>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
         </div>
