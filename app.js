@@ -654,7 +654,9 @@ window.__pc = null;
 function pcRenderBody() {
   const st = window.__pc; if (!st) return;
   const body = document.getElementById("pcBody"); if (!body) return;
-  const doneRows0 = st.rows.filter(e => !/测试/.test(e.s || "")); /* 测试门店剔除（10/28） */
+  const badStore = s => /测试/.test(s || "") || /[，,、;；]/.test(s || ""); /* 测试门店 + 一人多店混合店名剔除（10/28） */
+  const doneRows0 = st.rows.filter(e => !badStore(e.s));
+  const roster = st.roster.filter(e => !badStore(e.s));
   /* 同人同店去重：平台记录可能重复（重复学习/翻页重叠），保留最近完成时间 */
   const dedup = {};
   doneRows0.forEach(e => { const k = (e.n || "") + "|" + (e.s || ""); if (!dedup[k] || (e.t || "") > dedup[k].t) dedup[k] = e; });

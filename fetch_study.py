@@ -857,6 +857,8 @@ def fetch_pub_roster(tok):
         sname = e.get("fullName") or e.get("storeName") or ""
         if not sname or "测试" in sname:  # 10/28 用户要求剔除测试门店
             continue
+        if any(sep in sname for sep in ("，", ",", "、", ";", "；")):  # 10/28 一人多店混合店名，剔除（用户拍板）
+            continue
         roster.append({"n": e.get("employeeName") or "-", "s": sname,
                        "r": e.get("positionName") or "-", "g": e.get("organizeName") or ""})
     print(f"在职门店花名册: {len(roster)} 人（全量 {len(emps)} 人）")
