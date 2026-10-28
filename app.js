@@ -801,24 +801,23 @@ window.pcSnapshots = async function () {
       </div>`, true);
     return dataUrl;
   };
+  const hideUi = hide => {
+    ["pcRegRow", "pcDoneRow", "pcHdrBtns"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = hide ? "none" : ""; });
+  };
   try {
     /* 第 1 张：保持用户当前所选区域/筛选，收起门店人员，隐藏按钮行，只截数据 */
     st.exp = {}; st._solo = null; pcRenderBody();
-    const regRow = document.getElementById("pcRegRow"), doneRow = document.getElementById("pcDoneRow");
-    if (regRow) regRow.style.display = "none";
-    if (doneRow) doneRow.style.display = "none";
+    hideUi(true);
     const cv1 = await snap();
-    if (regRow) regRow.style.display = ""; if (doneRow) doneRow.style.display = "";
+    hideUi(false);
     await showOne(cv1, 1, "区域完成视图");
     window.pcSnapshots._next = async () => {
       tip('<div style="font-size:14px">⏳ 正在生成第 2 张（门店人员明细）…</div>');
       try {
-        st._solo = soloStore; pcRenderBody();  /* 仅渲染该店（保持其展开状态） */
-        const regRow2 = document.getElementById("pcRegRow"), doneRow2 = document.getElementById("pcDoneRow");
-        if (regRow2) regRow2.style.display = "none";
-        if (doneRow2) doneRow2.style.display = "none";
+        st._solo = soloStore; st.exp = { [soloStore]: true }; pcRenderBody();  /* 仅渲染该店并保持展开 */
+        hideUi(true);
         const cv2 = await snap();
-        if (regRow2) regRow2.style.display = ""; if (doneRow2) doneRow2.style.display = "";
+        hideUi(false);
         await showOne(cv2, 2, "门店明细 · " + soloStore);
       } catch (e) { tip(`<div style="color:#e64340">生成失败：${esc(String(e && e.message || e))}</div>`); }
       finally { st._solo = oldSolo; st.exp = oldExp; pcRenderBody(); }
@@ -836,7 +835,7 @@ function pcOpen(courseId, trEl) {
     <div id="pcCard" style="background:var(--card);color:var(--t1);border-radius:14px;max-width:860px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
       <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
         <div id="pcTitle"><b style="font-size:15px">${esc(c.courseName || "公开课")}</b>${c.pt ? `<span style="color:var(--t2);font-size:12px;margin-left:10px">📅 发布 ${esc(c.pt)}</span>` : ""}<span style="color:var(--t2);font-size:12px;margin-left:10px">按区域 · 门店 · 人员三级查看</span></div>
-        <div style="display:flex;gap:8px">
+        <div id="pcHdrBtns" style="display:flex;gap:8px">
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcSnapshots()">📸 两张快照</button>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
         </div>
