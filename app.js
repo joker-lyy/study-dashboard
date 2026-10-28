@@ -610,8 +610,15 @@ function renderPublicCourses() {
   const el = document.getElementById("main");
   const list = (DATA.publicCourses || []);
   const kw = (state.pcQuery || "").toLowerCase();
-  const shown = kw ? list.filter(c => (c.courseName || "").toLowerCase().includes(kw) || (c.tags || []).some(t => String(t).toLowerCase().includes(kw))) : list;
   const totalLearn = list.reduce((s, c) => s + (c.storeCount || 0), 0);
+  /* 标签导航：与搜索并存（10/28 用户要求） */
+  const tagCnt = {};
+  list.forEach(c => (c.tags || []).forEach(t => tagCnt[t] = (tagCnt[t] || 0) + 1));
+  const tags = Object.keys(tagCnt).sort((a, b) => tagCnt[b] - tagCnt[a]);
+  if (state.pcTag && !tags.includes(state.pcTag)) state.pcTag = null;
+  let filtered = state.pcTag ? list.filter(c => (c.tags || []).includes(state.pcTag)) : list;
+  const shown = kw ? filtered.filter(c => (c.courseName || "").toLowerCase().includes(kw) || (c.tags || []).some(t => String(t).toLowerCase().includes(kw))) : filtered;
+  const tagNav = tags.map(t => `<button class="btn" style="padding:5px 12px;font-size:12px;${state.pcTag === t ? "" : "background:var(--line);color:var(--t1)"}" onclick="pcSetTag('${esc(t).replace(/'/g, "\\'")}')">${esc(t)} <span style="opacity:.7">${tagCnt[t]}</span></button>`).join("");
   const rows = shown.map(c => `<tr style="cursor:pointer" onclick="pcOpen(${c.courseId}, this)">
       <td class="l"><b>${esc(c.courseName)}</b></td>
       <td class="l">${(c.tags || []).map(t => `<span class="badge" style="background:var(--line);color:var(--t2);margin-right:4px">${esc(t)}</span>`).join("") || "—"}</td>
@@ -624,11 +631,14 @@ function renderPublicCourses() {
       <div class="card"><div class="k">学习门店人次合计</div><div class="v">${totalLearn}</div></div>
     </div>
     <div class="sec">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn" style="padding:5px 12px;font-size:12px;${!state.pcTag ? "" : "background:var(--line);color:var(--t1)"}" onclick="pcSetTag(null)">全部</button>${tagNav}
+      </div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
         <input id="pcQuery" placeholder="搜索课程名 / 标签…" value="${esc(state.pcQuery || "")}"
           style="flex:1;max-width:320px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--t1);font-size:13px"
           oninput="state.pcQuery=this.value;clearTimeout(window.__pcT);window.__pcT=setTimeout(renderPublicCourses,250)">
-        <span style="font-size:12px;color:var(--t2)">点击课程查看学习明细（需本机看板服务在线）</span>
+        <span style="font-size:12px;color:var(--t2)">点击课程查看学习明细</span>
       </div>
       <table>
         <tr><th class="l">课程名称</th><th class="l">标签</th><th>学习门店数</th><th></th></tr>
@@ -637,45 +647,142 @@ function renderPublicCourses() {
     </div>
     <div id="pcModal"></div>`;
 }
-function pcClose() { const m = document.getElementById("pcModal"); if (m) m.innerHTML = ""; }
+function pcClose() { const m = document.getElementById("pcModal"); if (m) m.innerHTML = ""; window.__pc = null; }
+function pcSetTag(t) { state.pcTag = t; renderPublicCourses(); }
+/* 弹窗状态：region=区域导航（含 全部）；done=all|done|undone；exp=展开的门店集合 */
+window.__pc = null;
+function pcRenderBody() {
+  const st = window.__pc; if (!st) return;
+  const body = document.getElementById("pcBody"); if (!body) return;
+  const doneRows = st.rows, roster = st.roster;
+  /* 门店 -> 区域 映射（花名册）；区域名取组织末段 */
+  const storeRegion = {};
+  roster.forEach(e => { if (e.s && e.g) storeRegion[e.s] = String(e.g).split(/[\/\\]/).pop(); });
+  doneRows.forEach(e => { if (e.s && e.g) storeRegion[e.s] = String(e.g).split(/[\/\\]/).pop(); });
+  const regionOf = s => storeRegion[s] || "其他";
+  /* 组人员：已完成（有完成时间）+ 应学未完成（花名册中该门店在职且不在已完成名单） */
+  const doneKey = new Set(doneRows.map(e => (e.n || "") + "|" + (e.s || "")));
+  const storeMap = {};  // store -> {done:[], undone:[]}
+  const touch = s => (storeMap[s] = storeMap[s] || { done: [], undone: [] });
+  doneRows.forEach(e => { const s = e.s || "-"; touch(s).done.push({ n: e.n, r: e.r, t: e.t }); });
+  roster.forEach(e => {
+    const s = e.s || "-";
+    if (doneKey.has((e.n || "") + "|" + (e.s || ""))) return;
+    touch(s).undone.push({ n: e.n, r: e.r });
+  });
+  const stores = Object.keys(storeMap);
+  /* 区域聚合 */
+  const regAgg = {};
+  stores.forEach(s => {
+    const g = regionOf(s);
+    const a = regAgg[g] = regAgg[g] || { total: 0, done: 0, last: "" };
+    a.total += storeMap[s].done.length + storeMap[s].undone.length;
+    a.done += storeMap[s].done.length;
+    storeMap[s].done.forEach(e => { if (e.t > a.last) a.last = e.t; });
+  });
+  const regs = Object.keys(regAgg).sort((x, y) => regAgg[y].done / (regAgg[y].total || 1) - regAgg[x].done / (regAgg[x].total || 1));
+  if (!st._init) { st.region = "全部"; }  /* 首次默认全体，点区域联动 */
+  else if (st.region !== "全部" && !regAgg[st.region]) st.region = regs.length ? regs[0] : "全部";
+  st._init = true;
+  const cur = st.region === "全部" ? null : st.region;
+  const agg = cur ? regAgg[cur] : { total: st.totalAll, done: doneRows.length, last: st.lastAll };
+  const rate = agg.total ? Math.round(agg.done / agg.total * 100) : 0;
+  /* 该区域门店排序：有完成的按最近完成时间降序，无完成的跟后面按店名 */
+  const inReg = cur ? stores.filter(s => regionOf(s) === cur) : stores;
+  inReg.sort((a, b) => {
+    const la = storeMap[a].done.reduce((m, e) => e.t > m ? e.t : m, "");
+    const lb = storeMap[b].done.reduce((m, e) => e.t > m ? e.t : m, "");
+    if (la && lb) return lb.localeCompare(la);
+    if (la) return -1; if (lb) return 1;
+    return a.localeCompare(b, "zh");
+  });
+  const doneBtn = (k, label, n) => `<button class="btn" style="padding:5px 12px;font-size:12px;${st.done === k ? "" : "background:var(--line);color:var(--t1)"}" onclick="pcSetDone('${k}')">${label} ${n}</button>`;
+  /* 人员行按筛选 */
+  const showStore = s => {
+    const d = storeMap[s].done, u = storeMap[s].undone;
+    if (st.done === "done") return d.length ? [d, []] : null;
+    if (st.done === "undone") return u.length ? [[], u] : null;
+    return [d, u];
+  };
+  const storeRows = inReg.map(s => {
+    const du = showStore(s); if (!du) return "";
+    const [d, u] = du;
+    const total = d.length + u.length, last = d.reduce((m, e) => e.t > m ? e.t : m, "");
+    const open = st.exp[s];
+    const ppl = !open ? "" : d.map(e => `<tr style="background:var(--bg)">
+        <td class="l" style="padding-left:28px">${esc(e.n)}</td><td class="l">${esc(e.r || "-")}</td>
+        <td colspan="2"><span style="color:var(--acc)">已完成</span><span style="float:right">${esc(e.t || "-")}</span></td></tr>`).join("")
+      + u.map(e => `<tr style="background:var(--bg)">
+        <td class="l" style="padding-left:28px">${esc(e.n)}</td><td class="l">${esc(e.r || "-")}</td>
+        <td colspan="2"><span style="color:#e6a23c;font-weight:bold">未完成</span></td></tr>`).join("");
+    return `<tr style="cursor:pointer" onclick="pcToggleStore('${esc(s).replace(/'/g, "\\'")}')">
+        <td class="l"><b>${esc(s)}</b>${open ? ' <span style="color:var(--t2);font-size:11px">▾</span>' : ' <span style="color:var(--t2);font-size:11px">▸</span>'}</td>
+        <td><b style="color:${d.length === total ? "var(--acc)" : "#e6a23c"}">${d.length}</b> / ${total}</td>
+        <td class="l">${last ? esc(last) : `<span style="color:#e6a23c">未开始</span>`}</td>
+        <td class="l">${total && d.length === total ? `<span style="color:var(--acc)">✓ 全员完成</span>` : (d.length ? `<span style="color:#e6a23c">未完成 ${u.length} 人</span>` : `<span style="color:#e6a23c">全部未完成</span>`)}</td>
+      </tr>${ppl}`;
+  }).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:16px 0">该筛选下暂无数据</td></tr>`;
+  const regBtns = ["全部", ...regs].map(g => {
+    const a = g === "全部" ? { total: st.totalAll, done: doneRows.length } : regAgg[g];
+    const rt = a.total ? Math.round(a.done / a.total * 100) : 0;
+    return `<button class="btn" style="padding:5px 10px;font-size:12px;${st.region === g ? "" : "background:var(--line);color:var(--t1)"}" onclick="pcSetRegion('${esc(g).replace(/'/g, "\\'")}')">${esc(g)} <span style="opacity:.7">${rt}%</span></button>`;
+  }).join("");
+  body.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:12px;color:var(--t2);align-self:center">区域：</span>${regBtns}</div>
+    <div class="cards" style="margin-bottom:10px">
+      <div class="card"><div class="k">${cur ? esc(cur) + " · 应学" : "全体应学"}</div><div class="v">${agg.total}</div></div>
+      <div class="card"><div class="k">已完成</div><div class="v" style="color:var(--acc)">${agg.done}</div></div>
+      <div class="card"><div class="k">未完成</div><div class="v" style="color:#e6a23c">${agg.total - agg.done}</div></div>
+      <div class="card"><div class="k">完成率</div><div class="v">${rate}%</div></div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      ${doneBtn("all", "全部", agg.total)}${doneBtn("done", "已完成", agg.done)}${doneBtn("undone", "未完成", agg.total - agg.done)}
+    </div>
+    <table><tr><th class="l">门店（点击展开人员）</th><th>完成/应学</th><th class="l">最近完成时间</th><th class="l">状态</th></tr>${storeRows}</table>
+    <div style="margin-top:8px;font-size:11px;color:var(--t2)">应学口径 = 在职门店员工花名册（${roster.length} 人，快照 ${st.genAt}）；已完成来自平台学习记录。</div>`;
+}
+function pcSetRegion(g) { const st = window.__pc; if (!st) return; st.region = g; pcRenderBody(); }
+function pcSetDone(k) { const st = window.__pc; if (!st) return; st.done = k; pcRenderBody(); }
+function pcToggleStore(s) { const st = window.__pc; if (!st) return; st.exp[s] = !st.exp[s]; pcRenderBody(); }
 function pcOpen(courseId, trEl) {
   const m = document.getElementById("pcModal"); if (!m) return;
   const c = (DATA.publicCourses || []).find(x => x.courseId === courseId) || {};
+  window.__pc = { courseId, region: "全部", done: "all", exp: {}, rows: [], roster: [], _init: false };
   m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)pcClose()">
-    <div style="background:var(--card);color:var(--t1);border-radius:14px;max-width:760px;width:92%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
+    <div style="background:var(--card);color:var(--t1);border-radius:14px;max-width:860px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
       <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
-        <div><b style="font-size:15px">${esc(c.courseName || "公开课")}</b><span style="color:var(--t2);font-size:12px;margin-left:10px">员工学习明细 · 按完成时间倒序</span></div>
+        <div><b style="font-size:15px">${esc(c.courseName || "公开课")}</b><span style="color:var(--t2);font-size:12px;margin-left:10px">按区域 · 门店 · 人员三级查看</span></div>
         <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
       </div>
       <div id="pcBody" style="overflow:auto;padding:12px 18px;font-size:13px;color:var(--t2)">加载中…</div>
     </div></div>`;
-  const renderRows = (rows, srcNote) => {
-    const body = document.getElementById("pcBody"); if (!body) return;
-    const html = (rows || []).map(e => `<tr>
-        <td class="l"><b>${esc(e.n || e.employeeName)}</b></td>
-        <td class="l">${esc(e.s || e.storeName || "-")}</td>
-        <td class="l">${esc(e.r || e.roleName || "-")}</td>
-        <td>${esc(e.t || e.finishTime || "-")}</td></tr>`).join("")
-      || `<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:16px 0">暂无学习记录</td></tr>`;
-    body.innerHTML = `<div style="margin-bottom:8px;color:var(--t2)">共 <b style="color:var(--t1)">${(rows || []).length}</b> 人完成学习${srcNote ? ` <span style="font-size:11px">· ${srcNote}</span>` : ""}</div>
-      <table><tr><th class="l">姓名</th><th class="l">门店</th><th class="l">岗位</th><th>完成时间</th></tr>${html}</table>`;
-  };
-  /* 优先走本机 8767 实时代理；公共链接（无本机服务）降级读静态 data/public_course_emp.json（每日随抓数更新） */
-  fetch("http://localhost:8767/api/pub_course_emp?courseId=" + courseId, { signal: AbortSignal.timeout(4000) })
+  /* 花名册（未完成分母）与明细快照都来自静态文件；8767 在线时用实时明细替换快照明细 */
+  const loadStatic = fetch("data/public_course_emp.json", { cache: "no-store" })
     .then(r => r.json())
     .then(j => {
-      if (!j.ok) { renderRows([], ""); document.getElementById("pcBody").innerHTML = `<span style="color:#e6a23c">拉取失败：${esc(j.msg || "未知错误")}</span>`; return; }
-      renderRows(j.rows, "实时");
-    })
-    .catch(() => {
-      fetch("data/public_course_emp.json", { cache: "no-store" })
-        .then(r => r.json())
-        .then(j => renderRows((j.courses || {})[String(courseId)] || [], "每日快照 " + (j.generatedAt || "")))
-        .catch(() => {
-          const body = document.getElementById("pcBody"); if (!body) return;
-          body.innerHTML = `<span style="color:#e6a23c">明细数据加载失败，请刷新页面重试。</span>`;
-        });
+      const st = window.__pc; if (!st) return null;
+      st.rows = (j.courses || {})[String(courseId)] || [];
+      st.roster = j.roster || [];
+      st.genAt = j.generatedAt || "";
+      return j;
     });
+  loadStatic.then(j => {
+    if (!window.__pc) return;
+    const st = window.__pc;
+    st.totalAll = st.roster.length;
+    st.lastAll = st.rows.reduce((mx, e) => (e.t || "") > mx ? e.t : mx, "");
+    pcRenderBody();
+    /* 本机 8767 在线 → 实时明细替换快照（门店无区域字段，沿用花名册映射） */
+    if (j) fetch("http://localhost:8767/api/pub_course_emp?courseId=" + courseId, { signal: AbortSignal.timeout(4000) })
+      .then(r => r.json()).then(rj => {
+        if (!rj.ok || !window.__pc) return;
+        st.rows = (rj.rows || []).map(e => ({ n: e.employeeName, s: e.storeName, r: e.roleName, t: e.finishTime }));
+        pcRenderBody();
+      }).catch(() => {});
+  }).catch(() => {
+    const body = document.getElementById("pcBody"); if (!body) return;
+    body.innerHTML = `<span style="color:#e6a23c">明细数据加载失败，请刷新页面重试。</span>`;
+  });
 }
 
 function renderCat() {

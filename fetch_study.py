@@ -835,11 +835,35 @@ def _fetch_one_course_emp(tok, cid):
         page += 1
     return rows
 
+def fetch_pub_roster(tok):
+    """在职门店员工花名册（公开课「未完成」分母）：/web/md/emp/list 全量，
+    取 workStatus=='zc' 且有门店归属的员工。与明细同存 public_course_emp.json。"""
+    emps, page = [], 1
+    while True:
+        d, err = call(tok, "/web/md/emp/list?version=1",
+                      {"pageNumber": page, "pageSize": 1000})
+        if err or d is None:
+            print(f"[花名册] 第{page}页失败: {err}")
+            break
+        rows = d if isinstance(d, list) else (d.get("list") or [])
+        emps += rows
+        if not rows or len(rows) < 1000 or page >= 20:
+            break
+        page += 1
+    roster = [{"n": e.get("employeeName") or "-", "s": e.get("fullName") or e.get("storeName") or "",
+               "r": e.get("positionName") or "-", "g": e.get("organizeName") or ""}
+              for e in emps if e.get("workStatus") == "zc" and (e.get("fullName") or e.get("storeName"))]
+    print(f"在职门店花名册: {len(roster)} 人（全量 {len(emps)} 人）")
+    return roster
+
+
 def fetch_public_course_emps(tok, courses):
     """全量公开课学习明细 -> data/public_course_emp.json（静态文件）。
     10/28 用户指出公共链接（GitHub Pages）没有本机 8767 服务，明细必须静态化随 Pages 部署；
     本机 8767 代理仍保留（数据更新），前端 8767 不在线时降级读此静态文件。
     单课失败仅跳过并告警，不中断整批。"""
+    out_path = os.path.join(HERE, "data", "public_course_emp.json")
+    roster = fetch_pub_roster(tok)  # 在职门店花名册 = 「未完成」分母（门店/区域归属）
     out_path = os.path.join(HERE, "data", "public_course_emp.json")
     old = {}
     if os.path.exists(out_path):
@@ -864,7 +888,7 @@ def fetch_public_course_emps(tok, courses):
                     result[str(c["courseId"])] = old[str(c["courseId"])]
                 print(f"  [警告] 公开课明细抓取失败 {c['courseName']}: {str(e)[:120]}")
     total = sum(len(v) for v in result.values())
-    payload = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "courses": result}
+    payload = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "courses": result, "roster": roster}
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False)
     print(f"公开课明细: {len(result)} 门 / {total} 条学习记录 -> data/public_course_emp.json"
