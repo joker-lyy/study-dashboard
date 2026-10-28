@@ -189,6 +189,47 @@ def _promo_direct(req, first_err=None):
         return 502, {"ok": False, "msg": "proxy:%s direct:%s" % (first_err or "n/a", e2)}
 
 
+# ── 公开课学习明细按需代理（10/28）：前端点开课程 → 这里登录平台拉员工学习明细 ──
+_hyy_tok = {"tok": None, "ts": 0.0}
+
+def _hyy_login():
+    """复用 fetch_study 登录（带签名），token 缓存 90 分钟。"""
+    if _hyy_tok["tok"] and time.time() - _hyy_tok["ts"] < 5400:
+        return _hyy_tok["tok"]
+    sys.path.insert(0, DIR)
+    import fetch_study
+    tok, _ = fetch_study.login()
+    _hyy_tok.update(tok=tok, ts=time.time())
+    return tok
+
+def _pub_course_emp(course_id):
+    """拉单门公开课的全部员工学习明细（门店员工，pageSize=100 翻页聚合）。"""
+    import urllib.error
+    rows = []
+    page = 1
+    while page <= 30:
+        body = {"courseId": int(course_id), "pageNumber": page, "pageSize": 100,
+                "isStoreEmp": 1, "workStatus": "zc"}
+        req = urllib.request.Request(
+            "https://zhyyapp.ruipos.com/web/train/report/course/emp/list?version=1",
+            data=json.dumps(body).encode(), method="POST",
+            headers={"Content-Type": "application/json", "Accept": "*/*",
+                     "Origin": "https://zhyy.ruipos.com", "Referer": "https://zhyy.ruipos.com/",
+                     "ent": "cjss", "timezone": "Asia/Shanghai", "token": _hyy_login()})
+        op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with op.open(req, timeout=30) as r:
+            j = json.loads(r.read().decode("utf-8"))
+        if j.get("status") != 0:
+            raise RuntimeError(str(j)[:200])
+        d = j.get("data") or {}
+        rows.extend(d.get("list") or [])
+        if d.get("lastPage") or not d.get("list"):
+            break
+        page += 1
+    rows.sort(key=lambda x: x.get("finishTime") or "", reverse=True)
+    return rows
+
+
 def _butler_alive():
     try:
         with _OP.open("http://127.0.0.1:8766/health", timeout=1.5) as r:
@@ -259,6 +300,17 @@ class H(SimpleHTTPRequestHandler):
         if p == "/api/promo_records":
             code, data = _promo_proxy("GET", "?game=eq.promo_signup&select=id,store,name,time&order=time.desc&limit=200")
             return self._json({"ok": code == 200, "rows": data if isinstance(data, list) else []}, 200)
+        if p.startswith("/api/pub_course_emp"):
+            touch()
+            try:
+                q = parse_qs(urlparse(self.path).query)
+                cid = (q.get("courseId") or [""])[0].strip()
+                if not cid.isdigit():
+                    return self._json({"ok": False, "msg": "缺少 courseId"}, 400)
+                rows = _pub_course_emp(cid)
+                return self._json({"ok": True, "rows": rows})
+            except Exception as e:
+                return self._json({"ok": False, "msg": str(e)[:200]}, 500)
         return super().do_GET()
 
     def do_POST(self):

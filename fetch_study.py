@@ -782,6 +782,37 @@ def fetch_resigned(tok):
     print(f"离职员工: {len(lz)} 人（花名册 {len(emps)} 人）")
     return lz
 
+def fetch_public_courses(tok):
+    """公开课学习情况（10/28 新增）：report/course/list publicClass=1，含学习门店数。
+    明细（谁学完/何时）不在此抓——64门课×几百人太重，前端点开单门课经 8767 按需代理拉。"""
+    courses = []
+    page = 1
+    while True:
+        body = {"pageNumber": page, "pageSize": 100, "publicClass": 1}
+        req = urllib.request.Request(HOST + "/web/train/report/course/list?version=1",
+                                     data=json.dumps(body).encode(), method="POST")
+        for k, v in [("Content-Type", "application/json"), ("Accept", "*/*"),
+                     ("Origin", "https://zhyy.ruipos.com"), ("Referer", "https://zhyy.ruipos.com/"),
+                     ("token", tok), ("ent", "cjss"), ("timezone", "Asia/Shanghai")]:
+            req.add_header(k, v)
+        j = json.loads(_open(req, what="公开课列表").decode("utf-8"))
+        if j.get("status") != 0:
+            raise RuntimeError("公开课列表失败: %s" % str(j)[:200])
+        d = j.get("data") or {}
+        for c in d.get("list") or []:
+            if c.get("publicClass") == 1:
+                courses.append({"courseId": c.get("courseId"), "courseName": c.get("courseName"),
+                                "tags": c.get("tags") or [], "storeCount": c.get("storeCount") or 0})
+        if d.get("lastPage") or not d.get("list"):
+            break
+        page += 1
+        if page > 20:
+            break
+    courses.sort(key=lambda x: -(x["storeCount"] or 0))
+    print(f"公开课: {len(courses)} 门")
+    return courses
+
+
 def main():
     tok, role_state = login()
     plans = fetch_all_plans(tok)
@@ -809,6 +840,7 @@ def main():
             "resigned": fetch_resigned(tok),
             "maps": maps,
             "directMaps": direct,
+            "publicCourses": fetch_public_courses(tok),
             "categories": list(dict.fromkeys([c for c, _ in CATEGORY_RULES] + [k for k in cats if k not in [x for x, _ in CATEGORY_RULES]])),
             "plans": []}
 

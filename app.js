@@ -604,8 +604,75 @@ function renderOverview() {
 }
 
 /* ---------- 分类页 ---------- */
+/* 「其他」页签 → 公开课学习情况（2026-10-28）：课程列表来自 data.publicCourses（fetch_study 采集），
+   点课程经本机 8767 服务按需拉员工学习明细（update_server /api/pub_course_emp） */
+function renderPublicCourses() {
+  const el = document.getElementById("main");
+  const list = (DATA.publicCourses || []);
+  const kw = (state.pcQuery || "").toLowerCase();
+  const shown = kw ? list.filter(c => (c.courseName || "").toLowerCase().includes(kw) || (c.tags || []).some(t => String(t).toLowerCase().includes(kw))) : list;
+  const totalLearn = list.reduce((s, c) => s + (c.storeCount || 0), 0);
+  const rows = shown.map(c => `<tr style="cursor:pointer" onclick="pcOpen(${c.courseId}, this)">
+      <td class="l"><b>${esc(c.courseName)}</b></td>
+      <td class="l">${(c.tags || []).map(t => `<span class="badge" style="background:var(--line);color:var(--t2);margin-right:4px">${esc(t)}</span>`).join("") || "—"}</td>
+      <td><b>${c.storeCount || 0}</b></td>
+      <td><span style="color:var(--acc);font-size:12px">查看明细 ▸</span></td>
+    </tr>`).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:18px 0">没有匹配的公开课</td></tr>`;
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="k">公开课总数</div><div class="v">${list.length}</div></div>
+      <div class="card"><div class="k">学习门店人次合计</div><div class="v">${totalLearn}</div></div>
+    </div>
+    <div class="sec">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+        <input id="pcQuery" placeholder="搜索课程名 / 标签…" value="${esc(state.pcQuery || "")}"
+          style="flex:1;max-width:320px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--t1);font-size:13px"
+          oninput="state.pcQuery=this.value;clearTimeout(window.__pcT);window.__pcT=setTimeout(renderPublicCourses,250)">
+        <span style="font-size:12px;color:var(--t2)">点击课程查看学习明细（需本机看板服务在线）</span>
+      </div>
+      <table>
+        <tr><th class="l">课程名称</th><th class="l">标签</th><th>学习门店数</th><th></th></tr>
+        ${rows}
+      </table>
+    </div>
+    <div id="pcModal"></div>`;
+}
+function pcClose() { const m = document.getElementById("pcModal"); if (m) m.innerHTML = ""; }
+function pcOpen(courseId, trEl) {
+  const m = document.getElementById("pcModal"); if (!m) return;
+  const c = (DATA.publicCourses || []).find(x => x.courseId === courseId) || {};
+  m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)pcClose()">
+    <div style="background:var(--card);color:var(--t1);border-radius:14px;max-width:760px;width:92%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+        <div><b style="font-size:15px">${esc(c.courseName || "公开课")}</b><span style="color:var(--t2);font-size:12px;margin-left:10px">员工学习明细 · 按完成时间倒序</span></div>
+        <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
+      </div>
+      <div id="pcBody" style="overflow:auto;padding:12px 18px;font-size:13px;color:var(--t2)">加载中…</div>
+    </div></div>`;
+  fetch("http://localhost:8767/api/pub_course_emp?courseId=" + courseId)
+    .then(r => r.json())
+    .then(j => {
+      const body = document.getElementById("pcBody"); if (!body) return;
+      if (!j.ok) { body.innerHTML = `<span style="color:#e6a23c">拉取失败：${esc(j.msg || "未知错误")}</span>`; return; }
+      const rows = (j.rows || []).map(e => `<tr>
+        <td class="l"><b>${esc(e.employeeName)}</b></td>
+        <td class="l">${esc(e.storeName || "-")}</td>
+        <td class="l">${esc(e.roleName || "-")}</td>
+        <td>${esc(e.finishTime || "-")}</td></tr>`).join("")
+        || `<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:16px 0">暂无学习记录</td></tr>`;
+      body.innerHTML = `<div style="margin-bottom:8px;color:var(--t2)">共 <b style="color:var(--t1)">${(j.rows || []).length}</b> 人完成学习</div>
+        <table><tr><th class="l">姓名</th><th class="l">门店</th><th class="l">岗位</th><th>完成时间</th></tr>${rows}</table>`;
+    })
+    .catch(() => {
+      const body = document.getElementById("pcBody"); if (!body) return;
+      body.innerHTML = `<span style="color:#e6a23c">本机看板服务(8767)不在线——公开课明细只能在本机查看。双击「启动看板管家.vbs」后再试；课程列表不受影响。</span>`;
+    });
+}
+
 function renderCat() {
   const el = document.getElementById("main");
+  // 「其他」页签（10/28 定稿）：原组别计划常为空 → 改为公开课学习情况面板
+  if (state.cat === "其他" && (DATA.publicCourses || []).length) { renderPublicCourses(); return; }
   // 其他 Tab：组别固定导航（始终可见，带数量），避免筛选到空组别后"回不去"
   const gnav = state.cat === "其他" ? `<div class="planbar" style="flex-wrap:wrap">
     ${["全部", ...PUB_GROUPS].map(g => {
