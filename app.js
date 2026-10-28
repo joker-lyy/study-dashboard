@@ -654,7 +654,11 @@ window.__pc = null;
 function pcRenderBody() {
   const st = window.__pc; if (!st) return;
   const body = document.getElementById("pcBody"); if (!body) return;
-  const doneRows = st.rows, roster = st.roster;
+  const doneRows0 = st.rows.filter(e => !/测试/.test(e.s || "")); /* 测试门店剔除（10/28） */
+  /* 同人同店去重：平台记录可能重复（重复学习/翻页重叠），保留最近完成时间 */
+  const dedup = {};
+  doneRows0.forEach(e => { const k = (e.n || "") + "|" + (e.s || ""); if (!dedup[k] || (e.t || "") > dedup[k].t) dedup[k] = e; });
+  const doneRows = Object.values(dedup).sort((a, b) => (b.t || "").localeCompare(a.t || ""));
   /* 门店 -> 区域 映射（花名册）；区域名取组织末段 */
   const storeRegion = {};
   roster.forEach(e => { if (e.s && e.g) storeRegion[e.s] = String(e.g).split(/[\/\\]/).pop(); });

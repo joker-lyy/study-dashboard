@@ -850,9 +850,15 @@ def fetch_pub_roster(tok):
         if not rows or len(rows) < 1000 or page >= 20:
             break
         page += 1
-    roster = [{"n": e.get("employeeName") or "-", "s": e.get("fullName") or e.get("storeName") or "",
-               "r": e.get("positionName") or "-", "g": e.get("organizeName") or ""}
-              for e in emps if e.get("workStatus") == "zc" and (e.get("fullName") or e.get("storeName"))]
+    roster = []
+    for e in emps:
+        if e.get("workStatus") != "zc":
+            continue
+        sname = e.get("fullName") or e.get("storeName") or ""
+        if not sname or "测试" in sname:  # 10/28 用户要求剔除测试门店
+            continue
+        roster.append({"n": e.get("employeeName") or "-", "s": sname,
+                       "r": e.get("positionName") or "-", "g": e.get("organizeName") or ""})
     print(f"在职门店花名册: {len(roster)} 人（全量 {len(emps)} 人）")
     return roster
 
