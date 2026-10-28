@@ -782,6 +782,26 @@ def fetch_resigned(tok):
     print(f"离职员工: {len(lz)} 人（花名册 {len(emps)} 人）")
     return lz
 
+def _course_publish_ts(tok, cid):
+    """课程发布时间：course/info 的 cover 文件名带 13 位毫秒时间戳（上传即发布）。"""
+    import re, datetime
+    try:
+        body = {"courseId": int(cid)}
+        req = urllib.request.Request(HOST + "/web/train/course/info?version=1",
+                                     data=json.dumps(body).encode(), method="POST")
+        for k, v in [("Content-Type", "application/json"), ("Accept", "*/*"),
+                     ("Origin", "https://zhyy.ruipos.com"), ("Referer", "https://zhyy.ruipos.com/"),
+                     ("token", tok), ("ent", "cjss"), ("timezone", "Asia/Shanghai")]:
+            req.add_header(k, v)
+        j = json.loads(_open(req, what="课程详情").decode("utf-8"))
+        cover = ((j.get("data") or {}).get("cover")) or ""
+        m = re.search(r"(\d{13})", cover)
+        if m:
+            return datetime.datetime.fromtimestamp(int(m.group(1)) / 1000).strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    return ""
+
 def fetch_public_courses(tok):
     """公开课学习情况（10/28 新增）：report/course/list publicClass=1，含学习门店数。
     明细（谁学完/何时）不在此抓——64门课×几百人太重，前端点开单门课经 8767 按需代理拉。"""
@@ -809,7 +829,14 @@ def fetch_public_courses(tok):
         if page > 20:
             break
     courses.sort(key=lambda x: -(x["storeCount"] or 0))
-    print(f"公开课: {len(courses)} 门")
+    # 补发布时间（cover 时间戳，4 并发，失败留空不阻塞）
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(4) as ex:
+        pts = list(ex.map(lambda c: _course_publish_ts(tok, c["courseId"]), courses))
+    for c, pt in zip(courses, pts):
+        if pt:
+            c["pt"] = pt
+    print(f"公开课: {len(courses)} 门（{sum(1 for c in courses if c.get('pt'))} 门有发布时间）")
     return courses
 
 def _fetch_one_course_emp(tok, cid):
@@ -896,7 +923,8 @@ def fetch_public_course_emps(tok, courses):
                     result[str(c["courseId"])] = old[str(c["courseId"])]
                 print(f"  [警告] 公开课明细抓取失败 {c['courseName']}: {str(e)[:120]}")
     total = sum(len(v) for v in result.values())
-    payload = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "courses": result, "roster": roster}
+    pts = {str(c["courseId"]): c["pt"] for c in courses if c.get("pt")}
+    payload = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "courses": result, "roster": roster, "pts": pts}
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False)
     print(f"公开课明细: {len(result)} 门 / {total} 条学习记录 -> data/public_course_emp.json"

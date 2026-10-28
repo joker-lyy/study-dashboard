@@ -825,7 +825,7 @@ function pcOpen(courseId, trEl) {
   m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)pcClose()">
     <div id="pcCard" style="background:var(--card);color:var(--t1);border-radius:14px;max-width:860px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
       <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
-        <div><b style="font-size:15px">${esc(c.courseName || "公开课")}</b><span style="color:var(--t2);font-size:12px;margin-left:10px">按区域 · 门店 · 人员三级查看</span></div>
+        <div id="pcTitle"><b style="font-size:15px">${esc(c.courseName || "公开课")}</b>${c.pt ? `<span style="color:var(--t2);font-size:12px;margin-left:10px">📅 发布 ${esc(c.pt)}</span>` : ""}<span style="color:var(--t2);font-size:12px;margin-left:10px">按区域 · 门店 · 人员三级查看</span></div>
         <div style="display:flex;gap:8px">
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcSnapshots()">📸 两张快照</button>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
@@ -841,6 +841,11 @@ function pcOpen(courseId, trEl) {
       st.rows = (j.courses || {})[String(courseId)] || [];
       st.roster = j.roster || [];
       st.genAt = j.generatedAt || "";
+      st.pt = c.pt || (j.pts || {})[String(courseId)] || "";
+      /* 标题栏回填发布时间（data.json 无 pt 时从静态文件补） */
+      if (st.pt) {
+        const ttl = document.getElementById("pcTitle"); if (ttl) ttl.innerHTML += ` <span style="color:var(--t2);font-size:12px;margin-left:10px">📅 发布 ${esc(st.pt)}</span>`;
+      }
       return j;
     });
   loadStatic.then(j => {
