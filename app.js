@@ -2607,16 +2607,36 @@ window.sharePng = async function (mode) {
     const isModal = mode === "modal" && modal && modal.classList.contains("show");
     let restore = null;
     let target;
+    const subTitle = { "全部": "全体学习明细", "区域汇总": "区域汇总", "组别汇总": "组别汇总", "门店分数排名及明细": "门店分数排名及明细" }[state.sub] || state.sub;
+    const snapTitle = mode === "all"
+      ? (((plansInRange(state.cat)[state.planIdx] || {}).planName || "学习看板") + " · " + subTitle)
+      : isModal ? ((modal.querySelector(".mhead h3") || {}).textContent || "学习明细") : ((document.querySelector("header h1") || {}).textContent || "学习看板");
     if (mode === "all") {
-      // 全部大表快照：只截表格本体，临时放开横向滚动让整表全部渲染
+      // fix236: 二级汇总快照改干净容器重排 —— 顶部加课程标题+生成时间，克隆表格并整列删掉「操作」按钮列
       const box = document.getElementById("allSecBody");
-      target = box;
       if (box) {
         const tbl = box.querySelector("table");
-        const old = { ow: box.style.overflow, w: tbl && tbl.style.width };
-        box.style.overflow = "visible";
-        if (tbl) tbl.style.width = Math.max(tbl.scrollWidth, box.scrollWidth) + "px";
-        restore = () => { box.style.overflow = old.ow; if (tbl) tbl.style.width = old.w; };
+        const stage = document.createElement("div");
+        stage.id = "pngSnapStage";
+        stage.style.cssText = "position:fixed;left:-99999px;top:0;background:#fff;padding:20px 24px;color:#1A2A4A";
+        const t1 = document.createElement("div");
+        t1.style.cssText = "font-size:18px;font-weight:700;margin-bottom:4px";
+        t1.textContent = snapTitle;
+        const t2 = document.createElement("div");
+        t2.style.cssText = "font-size:12px;color:#7a8399;margin-bottom:12px";
+        t2.textContent = "生成时间 " + new Date().toLocaleString("zh-CN", { hour12: false }).replace(/:\d{2}$/, "");
+        stage.appendChild(t1); stage.appendChild(t2);
+        if (tbl) {
+          const c = tbl.cloneNode(true);
+          const headCells = Array.from(c.querySelectorAll("tr:first-child th"));
+          const opIdx = headCells.findIndex(th => th.textContent.trim() === "操作");
+          if (opIdx >= 0) c.querySelectorAll("tr").forEach(r => { const cs = r.children; if (cs[opIdx]) cs[opIdx].remove(); });
+          c.style.width = "auto";
+          stage.appendChild(c);
+        } else stage.appendChild(box.cloneNode(true));
+        document.body.appendChild(stage);
+        target = stage;
+        restore = () => { const st = document.getElementById("pngSnapStage"); if (st) st.remove(); };
       }
     } else {
       target = isModal ? modal.querySelector(".modal") : document.body;
@@ -2629,16 +2649,14 @@ window.sharePng = async function (mode) {
         // html2canvas 对 position:fixed 祖先内的元素会按视口高度裁剪 → 截图瞬间把遮罩改为 static
         const oldPos = modal.style.position, oldPad = modal.style.padding, oldOv = modal.style.overflow;
         modal.style.position = "static"; modal.style.padding = "0"; modal.style.overflow = "visible";
-        // 快照只留标题+日期+表格：隐藏口径说明与筛选行（组别/区域/完成状态），截完还原（10/17 Rain）
+        // 快照只留标题+日期+表格：隐藏口径说明、筛选行与所有按钮（组别/区域/完成状态），截完还原（10/17 Rain，fix236 补按钮）
         const fixups = [];
         modal.querySelectorAll("details, .mfilter").forEach(d => { fixups.push([d, "display", d.style.display]); d.style.display = "none"; });
+        target.querySelectorAll("button").forEach(b => { fixups.push([b, "display", b.style.display]); b.style.display = "none"; });
         restore = () => { target.style.maxHeight = oldM; target.style.overflow = oldO; if (mb) mb.style.overflow = oldB; modal.style.position = oldPos; modal.style.padding = oldPad; modal.style.overflow = oldOv; fixups.forEach(([el, k, v]) => { if (k === "open") el.open = v; else el.style[k] = v; }); };
       }
     }
-    const subTitle = { "全部": "全体学习明细", "区域汇总": "区域汇总", "组别汇总": "组别汇总", "门店分数排名及明细": "门店分数排名及明细" }[state.sub] || state.sub;
-    const title = mode === "all"
-      ? (((plansInRange(state.cat)[state.planIdx] || {}).planName || "学习看板") + " · " + subTitle)
-      : isModal ? ((modal.querySelector(".mhead h3") || {}).textContent || "学习明细") : ((document.querySelector("header h1") || {}).textContent || "学习看板");
+    const title = snapTitle;
     const canvas = await html2canvas(target, {
       useCORS: true, backgroundColor: "#f2f4f8", scale: 2, logging: false,
       width: target.scrollWidth || undefined, height: target.scrollHeight || undefined,
