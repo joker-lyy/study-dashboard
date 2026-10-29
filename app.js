@@ -1068,8 +1068,8 @@ function renderCat() {
       <h3>二级汇总</h3>
       <div class="subtabs">
         ${SUBS.map(s => `<button class="${state.sub === s ? "active" : ""}" onclick="state.sub='${s}';renderCat()">${s}</button>`).join("")}
-        ${state.sub === "全部" ? `<button class="btn" style="padding:5px 14px;font-size:12px;margin-left:8px" onclick="sharePng('all')">🖼 快照</button>
-        <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:8px" onclick="openDailyReport()">📄 日报</button>` : ""}
+        <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:8px" onclick="sharePng('all')">🖼 快照</button>
+        ${state.sub === "全部" ? `<button class="btn" style="padding:5px 14px;font-size:12px;margin-left:8px" onclick="openDailyReport()">📄 日报</button>` : ""}
       </div>
       <div id="allSecBody" style="overflow-x:auto">${body}</div>
     </div>`;
@@ -2613,8 +2613,9 @@ window.sharePng = async function (mode) {
         restore = () => { target.style.maxHeight = oldM; target.style.overflow = oldO; if (mb) mb.style.overflow = oldB; modal.style.position = oldPos; modal.style.padding = oldPad; modal.style.overflow = oldOv; fixups.forEach(([el, k, v]) => { if (k === "open") el.open = v; else el.style[k] = v; }); };
       }
     }
+    const subTitle = { "全部": "全体学习明细", "区域汇总": "区域汇总", "组别汇总": "组别汇总", "门店分数排名及明细": "门店分数排名及明细" }[state.sub] || state.sub;
     const title = mode === "all"
-      ? (((plansInRange(state.cat)[state.planIdx] || {}).planName || "学习看板") + " · 全体学习明细")
+      ? (((plansInRange(state.cat)[state.planIdx] || {}).planName || "学习看板") + " · " + subTitle)
       : isModal ? ((modal.querySelector(".mhead h3") || {}).textContent || "学习明细") : ((document.querySelector("header h1") || {}).textContent || "学习看板");
     const canvas = await html2canvas(target, {
       useCORS: true, backgroundColor: "#f2f4f8", scale: 2, logging: false,
