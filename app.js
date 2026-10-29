@@ -379,6 +379,7 @@ function isTaskPlan(p) {
   if (!TASK_CREATORS[String(p.creator || "")]) return false;
   const c = effCat(p);
   if (c === "新加盟商培训" || c === "裂变加盟商培训") return false;
+  if (c === "员工培训/晋升") return false; // 晋升类（晋升店长/晋升笔试考核等）留在「员工培训/晋升」板块（10/29 Rain）
   if (/测试/.test(p.planName || "")) return false;
   return true;
 }
