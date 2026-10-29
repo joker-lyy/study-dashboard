@@ -732,6 +732,7 @@ function pcRenderBody() {
     const d = storeMap[s].done, u = storeMap[s].undone;
     if (st.done === "done") return d.length ? [d, []] : null;
     if (st.done === "undone") return u.length ? [[], u] : null;
+    if (st.done === "alldone") return (d.length && !u.length) ? [d, []] : null; /* 只看全员完成门店 */
     return [d, u];
   };
   const storeRows = inRegF.map(s => {
@@ -766,7 +767,7 @@ function pcRenderBody() {
       <div class="card"><div class="k">完成率</div><div class="v">${rate}%</div></div>
     </div>
     <div id="pcDoneRow" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-      ${doneBtn("all", "全部", agg.total)}${doneBtn("done", "已完成", agg.done)}${doneBtn("undone", "未完成", agg.total - agg.done)}
+      ${doneBtn("all", "全部", agg.total)}${doneBtn("done", "已完成", agg.done)}${doneBtn("undone", "未完成", agg.total - agg.done)}${doneBtn("alldone", "全员完成", inReg.filter(s => storeMap[s].done.length && !storeMap[s].undone.length).length)}
     </div>
     <table><tr><th class="l">门店（点击展开人员）</th><th>完成/应学</th><th class="l">最近完成时间</th><th class="l">状态</th></tr>${storeRows}</table>
     <div style="margin-top:8px;font-size:11px;color:var(--t2)">应学口径 = 在职门店员工花名册（${roster.length} 人，快照 ${st.genAt}）；已完成来自平台学习记录。</div>`;
