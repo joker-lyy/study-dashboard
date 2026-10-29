@@ -779,18 +779,23 @@ window._pcSnapCtx = function () {
   };
   const c = (DATA.publicCourses || []).find(x => x.courseId === st.courseId) || {};
   const courseName = (c.courseName || "公开课").replace(/[\\/:*?"<>|]/g, "").trim();
-  const wrap = card.parentElement;  /* position:fixed 遮罩 → 截图瞬间改 static 防裁剪 */
+  const wrap = card.parentElement;
+  /* 干净截图（10/29）：把卡片克隆到屏幕外的纯白容器里截，背后页面内容完全不进入画面 */
   const snap = async () => {
-    const oldP = wrap.style.position, oldJ = wrap.style.justifyContent, oldMh = card.style.maxHeight, oldOv = card.style.overflow;
-    const pb = document.getElementById("pcBody"); const oldPbOv = pb ? pb.style.overflow : "";
-    wrap.style.position = "static"; wrap.style.justifyContent = "flex-start";
-    card.style.maxHeight = "none"; card.style.overflow = "visible";
-    if (pb) pb.style.overflow = "visible";
-    const cv = await html2canvas(card, { backgroundColor: "#ffffff", scale: 2, logging: false, useCORS: true, width: card.scrollWidth, height: card.scrollHeight, windowWidth: card.scrollWidth, windowHeight: card.scrollHeight, scrollX: 0, scrollY: 0 });
-    wrap.style.position = oldP; wrap.style.justifyContent = oldJ;
-    card.style.maxHeight = oldMh; card.style.overflow = oldOv;
-    if (pb) pb.style.overflow = oldPbOv;
-    return cv;
+    document.querySelectorAll("#pcSnapStage").forEach(n => n.remove());
+    const stage = document.createElement("div");
+    stage.id = "pcSnapStage";
+    stage.style.cssText = "position:fixed;top:0;left:-20000px;background:#ffffff;z-index:-1;width:" + Math.max(card.scrollWidth, 720) + "px";
+    const clone = card.cloneNode(true);
+    clone.style.cssText += ";max-height:none;overflow:visible;width:100%;box-shadow:none;border-radius:0;background:#ffffff";
+    const pb = clone.querySelector("#pcBody"); if (pb) pb.style.overflow = "visible";
+    ["pcRegRow", "pcDoneRow", "pcHdrBtns"].forEach(id => { const el = clone.querySelector("#" + id); if (el) el.style.display = "none"; });
+    stage.appendChild(clone);
+    document.body.appendChild(stage);
+    try {
+      const cv = await html2canvas(clone, { backgroundColor: "#ffffff", scale: 2, logging: false, useCORS: true, width: stage.scrollWidth, height: clone.scrollHeight, windowWidth: stage.scrollWidth, windowHeight: clone.scrollHeight + 400, scrollX: 0, scrollY: 0, x: 0, y: 0 });
+      return cv;
+    } finally { stage.remove(); }
   };
   const showOne = async (cv, label) => {
     const blob = await new Promise(r => cv.toBlob(r, "image/png"));
