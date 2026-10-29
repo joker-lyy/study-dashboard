@@ -889,7 +889,8 @@ function pcOpen(courseId, trEl) {
   const m = document.getElementById("pcModal"); if (!m) return;
   const c = (DATA.publicCourses || []).find(x => String(x.courseId) === String(courseId)) || {};
   window.__pc = { courseId, region: "全部", done: "all", exp: {}, rows: [], roster: [], _init: false };
-  m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)pcClose()">
+  const isShare = document.body.classList.contains("share-mode");
+  m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" ${isShare ? "" : 'onclick="if(event.target===this)pcClose()"'}>
     <div id="pcCard" style="background:var(--card);color:var(--t1);border-radius:14px;max-width:860px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
       <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
         <div id="pcTitle"><b style="font-size:15px">${esc(c.courseName || "公开课")}</b>${c.pt ? `<span style="color:var(--t2);font-size:12px;margin-left:10px">📅 发布 ${esc(c.pt)}</span>` : ""}<span style="color:var(--t2);font-size:12px;margin-left:10px">按区域 · 门店 · 人员三级查看</span></div>
@@ -897,7 +898,7 @@ function pcOpen(courseId, trEl) {
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcSnapRegion()">📸 区域快照</button>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcSnapStore()">📸 门店快照</button>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcShare()">🔗 分享</button>
-          <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
+          ${isShare ? "" : `<button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>`}
         </div>
       </div>
       <div id="pcBody" style="overflow:auto;padding:12px 18px;font-size:13px;color:var(--t2)">加载中…</div>
@@ -2401,8 +2402,9 @@ fetch("data/data.json?v=" + Date.now()).then(r => r.json()).then(d => {
   document.getElementById("genTime").textContent = "数据更新于 " + String(d.generatedAt || "").slice(0, 16);  // 时:分即可，不显示秒
   render();
   if (typeof applyShareView === "function") applyShareView();
-  /* 公开课分享直达（#p=<courseId>）：自动落「其他」页签并弹出该课明细 */
+  /* 公开课分享直达（#p=<courseId>）：进入分享模式（隐藏看板界面，只显示课程明细）并弹出该课明细 */
   if (location.hash.startsWith("#p=")) {
+    document.body.classList.add("share-mode");
     const cid = decodeURIComponent(location.hash.slice(3));
     state.tab = "其他"; state.planIdx = 0;
     if ((DATA.publicCourses || []).some(x => String(x.courseId) === cid)) window.__pcAuto = cid;

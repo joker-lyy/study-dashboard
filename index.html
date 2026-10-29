@@ -84,6 +84,14 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 .rangebar button.active{background:var(--brand);color:var(--navy);border-color:var(--brand);font-weight:700}
 .rangebar input[type=date]{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;border-radius:8px;padding:4px 8px;font-size:12px;color-scheme:dark}
 .rangebar .sep{color:#9fb0cc;font-size:12px}
+/* 分享直达模式（#p=<courseId>）：只显示课程明细卡片，隐藏整个看板界面 */
+body.share-mode header,body.share-mode nav.tabs{display:none!important}
+body.share-mode{background:#fff}
+body.share-mode main{max-width:960px;margin:0 auto;padding:24px 16px 60px}
+body.share-mode main > *:not(#pcModal):not(#shareLoading){display:none!important}
+body.share-mode #pcModal > div{position:static!important;background:transparent!important;display:block!important;padding:0!important}
+body.share-mode #pcCard{max-width:100%;width:100%;max-height:none;box-shadow:0 2px 18px rgba(0,0,0,.1)}
+body.share-mode #shareLoading{margin-top:60px}
 </style>
 </head>
 <body>
@@ -105,7 +113,7 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 
 <nav class="tabs" id="mainTabs"></nav>
 <nav class="tabs" id="promoBar" style="display:none"></nav>
-<main id="main"><div class="sec" style="text-align:center;color:var(--t2);padding:60px 0;font-size:14px">⏳ 数据加载中…（数据包约 9MB，公网首次加载需 20~60 秒，请勿关闭）</div></main>
+<main id="main"><div class="sec" id="shareLoading" style="text-align:center;color:var(--t2);padding:60px 0;font-size:14px">⏳ 数据加载中…（数据包约 9MB，公网首次加载需 20~60 秒，请勿关闭）</div></main>
 
 <div class="modal-mask" id="mask">
   <div class="modal">
@@ -115,7 +123,7 @@ tr.clickable:hover td:first-child{text-decoration:underline}
 </div>
 
 <script src="qrcode.min.js?v=14"></script>
-<script src="app.js?v=174"></script>
+<script src="app.js?v=175"></script>
 <script>
 /* 手动更新：本地更新服务(localhost:8767) 抓数+推送 */
 const UPD_SVC = "http://localhost:8767";
