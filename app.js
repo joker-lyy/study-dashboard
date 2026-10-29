@@ -609,22 +609,13 @@ function renderOverview() {
 function renderPublicCourses() {
   const el = document.getElementById("main");
   const list = (DATA.publicCourses || []);
-  const kw = (state.pcQuery || "").toLowerCase();
   const totalLearn = list.reduce((s, c) => s + (c.storeCount || 0), 0);
   /* 标签导航：与搜索并存（10/28 用户要求） */
   const tagCnt = {};
   list.forEach(c => (c.tags || []).forEach(t => tagCnt[t] = (tagCnt[t] || 0) + 1));
   const tags = Object.keys(tagCnt).sort((a, b) => tagCnt[b] - tagCnt[a]);
   if (state.pcTag && !tags.includes(state.pcTag)) state.pcTag = null;
-  let filtered = state.pcTag ? list.filter(c => (c.tags || []).includes(state.pcTag)) : list;
-  const shown = kw ? filtered.filter(c => (c.courseName || "").toLowerCase().includes(kw) || (c.tags || []).some(t => String(t).toLowerCase().includes(kw))) : filtered;
   const tagNav = tags.map(t => `<button class="btn" style="padding:5px 12px;font-size:12px;${state.pcTag === t ? "" : "background:var(--line);color:var(--t1)"}" onclick="pcSetTag('${esc(t).replace(/'/g, "\\'")}')">${esc(t)} <span style="opacity:.7">${tagCnt[t]}</span></button>`).join("");
-  const rows = shown.map(c => `<tr style="cursor:pointer" onclick="pcOpen(${c.courseId}, this)">
-      <td class="l"><b>${esc(c.courseName)}</b></td>
-      <td class="l">${(c.tags || []).map(t => `<span class="badge" style="background:var(--line);color:var(--t2);margin-right:4px">${esc(t)}</span>`).join("") || "—"}</td>
-      <td><b>${c.storeCount || 0}</b></td>
-      <td><span style="color:var(--acc);font-size:12px">查看明细 ▸</span></td>
-    </tr>`).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:18px 0">没有匹配的公开课</td></tr>`;
   el.innerHTML = `
     <div class="cards">
       <div class="card"><div class="k">公开课总数</div><div class="v">${list.length}</div></div>
@@ -637,20 +628,36 @@ function renderPublicCourses() {
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
         <input id="pcQuery" placeholder="搜索课程名 / 标签…" value="${esc(state.pcQuery || "")}"
           style="flex:1;max-width:320px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--t1);font-size:13px"
-          oninput="state.pcQuery=this.value;clearTimeout(window.__pcT);window.__pcT=setTimeout(renderPublicCourses,250)">
+          oninput="state.pcQuery=this.value;clearTimeout(window.__pcT);window.__pcT=setTimeout(pcRenderTable,250)">
         <span style="font-size:12px;color:var(--t2)">点击课程查看学习明细</span>
       </div>
-      <table>
-        <tr><th class="l">课程名称</th><th class="l">标签</th><th>学习门店数</th><th></th></tr>
-        ${rows}
-      </table>
+      <div id="pcTableWrap"></div>
     </div>
     <div id="pcModal"></div>`;
+  pcRenderTable();
   /* 分享直达（#p=<courseId>）：任何一次公开课面板渲染后自动重开该课明细（热刷新重绘也不丢） */
   if (window.__pcAuto && list.some(x => String(x.courseId) === String(window.__pcAuto))) pcOpen(window.__pcAuto);
 }
 function pcClose() { const m = document.getElementById("pcModal"); if (m) m.innerHTML = ""; window.__pc = null; window.__pcAuto = null; }
 function pcSetTag(t) { state.pcTag = t; renderPublicCourses(); }
+/* 只重绘课程表格（10/29 修复搜索框输入即失焦/输入法被打断：面板 innerHTML 不整体重建，输入框保持焦点） */
+function pcRenderTable() {
+  const wrap = document.getElementById("pcTableWrap"); if (!wrap) return;
+  const list = (DATA.publicCourses || []);
+  const kw = (state.pcQuery || "").toLowerCase();
+  const filtered = state.pcTag ? list.filter(c => (c.tags || []).includes(state.pcTag)) : list;
+  const shown = kw ? filtered.filter(c => (c.courseName || "").toLowerCase().includes(kw) || (c.tags || []).some(t => String(t).toLowerCase().includes(kw))) : filtered;
+  const rows = shown.map(c => `<tr style="cursor:pointer" onclick="pcOpen(${c.courseId}, this)">
+      <td class="l"><b>${esc(c.courseName)}</b></td>
+      <td class="l">${(c.tags || []).map(t => `<span class="badge" style="background:var(--line);color:var(--t2);margin-right:4px">${esc(t)}</span>`).join("") || "—"}</td>
+      <td><b>${c.storeCount || 0}</b></td>
+      <td><span style="color:var(--acc);font-size:12px">查看明细 ▸</span></td>
+    </tr>`).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:18px 0">没有匹配的公开课</td></tr>`;
+  wrap.innerHTML = `<table>
+      <tr><th class="l">课程名称</th><th class="l">标签</th><th>学习门店数</th><th></th></tr>
+      ${rows}
+    </table>`;
+}
 /* 弹窗状态：region=区域导航（含 全部）；done=all|done|undone；exp=展开的门店集合 */
 window.__pc = null;
 function pcRenderBody() {
