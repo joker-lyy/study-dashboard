@@ -646,8 +646,10 @@ function renderPublicCourses() {
       </table>
     </div>
     <div id="pcModal"></div>`;
+  /* 分享直达（#p=<courseId>）：任何一次公开课面板渲染后自动重开该课明细（热刷新重绘也不丢） */
+  if (window.__pcAuto && list.some(x => String(x.courseId) === String(window.__pcAuto))) pcOpen(window.__pcAuto);
 }
-function pcClose() { const m = document.getElementById("pcModal"); if (m) m.innerHTML = ""; window.__pc = null; }
+function pcClose() { const m = document.getElementById("pcModal"); if (m) m.innerHTML = ""; window.__pc = null; window.__pcAuto = null; }
 function pcSetTag(t) { state.pcTag = t; renderPublicCourses(); }
 /* 弹窗状态：region=区域导航（含 全部）；done=all|done|undone；exp=展开的门店集合 */
 window.__pc = null;
@@ -838,9 +840,42 @@ window.pcSnapStore = async function () {
     tip(`<div style="color:#e64340">生成失败：${esc(String(e && e.message || e))}</div>`);
   } finally { st._solo = oldSolo; st.exp = oldExp; pcRenderBody(); }
 };
+/* 公开课明细分享（10/29）：#p=<courseId> 直达链接，对方打开自动落「其他」页签并弹出该课明细，数据随看板同步 */
+window.pcShare = function () {
+  const st = window.__pc; if (!st) return;
+  const url = location.origin + location.pathname + "#p=" + encodeURIComponent(st.courseId);
+  let ov = document.getElementById("shareOverlay");
+  if (ov) ov.remove();
+  ov = document.createElement("div");
+  ov.id = "shareOverlay";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px";
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:12px;max-width:560px;width:100%;padding:18px 20px" onclick="event.stopPropagation()">
+      <div style="font-size:15px;font-weight:700;color:#1A2A4A;margin-bottom:6px">🔗 分享链接已生成</div>
+      <div style="font-size:12px;color:#7a8399;margin-bottom:10px">对方打开后直接进入公开课面板并弹出这门课的学习明细，可按区域/门店/人员浏览，数据随看板每日自动更新</div>
+      <textarea id="shareUrlBox" readonly style="width:100%;height:72px;border:1px solid #e3e6ee;border-radius:8px;padding:8px;font-size:12px;color:#1A2A4A;resize:none">${url}</textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <button id="shareCopyBtn" style="background:#2f6fed;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">复制链接</button>
+        <button onclick="document.getElementById('shareOverlay').remove()" style="background:#f0f2f7;color:#1A2A4A;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px">关闭</button>
+      </div>
+    </div>`;
+  const box = ov.querySelector("#shareUrlBox");
+  box.onclick = () => box.select();
+  ov.querySelector("#shareCopyBtn").onclick = () => {
+    box.select(); box.setSelectionRange(0, url.length);
+    let done = false;
+    try { done = document.execCommand("copy"); } catch (e) {}
+    if (!done && navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(url).then(() => {}, () => {}); done = true; }
+    const b = ov.querySelector("#shareCopyBtn"); if (b) { b.textContent = done ? "✅ 已复制" : "复制失败，请手动复制"; setTimeout(() => { if (b) b.textContent = "复制链接"; }, 2000); }
+  };
+  setTimeout(() => { box.focus(); box.select(); }, 50);
+};
+
 function pcOpen(courseId, trEl) {
   const m = document.getElementById("pcModal"); if (!m) return;
-  const c = (DATA.publicCourses || []).find(x => x.courseId === courseId) || {};
+  const c = (DATA.publicCourses || []).find(x => String(x.courseId) === String(courseId)) || {};
   window.__pc = { courseId, region: "全部", done: "all", exp: {}, rows: [], roster: [], _init: false };
   m.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)pcClose()">
     <div id="pcCard" style="background:var(--card);color:var(--t1);border-radius:14px;max-width:860px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)">
@@ -849,6 +884,7 @@ function pcOpen(courseId, trEl) {
         <div id="pcHdrBtns" style="display:flex;gap:8px">
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcSnapRegion()">📸 区域快照</button>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcSnapStore()">📸 门店快照</button>
+          <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcShare()">🔗 分享</button>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcClose()">关闭</button>
         </div>
       </div>
@@ -2352,6 +2388,13 @@ fetch("data/data.json?v=" + Date.now()).then(r => r.json()).then(d => {
   document.getElementById("genTime").textContent = "数据更新于 " + String(d.generatedAt || "").slice(0, 16);  // 时:分即可，不显示秒
   render();
   if (typeof applyShareView === "function") applyShareView();
+  /* 公开课分享直达（#p=<courseId>）：自动落「其他」页签并弹出该课明细 */
+  if (location.hash.startsWith("#p=")) {
+    const cid = decodeURIComponent(location.hash.slice(3));
+    state.tab = "其他"; state.planIdx = 0;
+    if ((DATA.publicCourses || []).some(x => String(x.courseId) === cid)) window.__pcAuto = cid;
+    render();
+  }
   hydrateCatOv(); // 拉取落盘的分类覆盖，防止 localStorage 被清/换源后丢失
   hydrateFissionMap(); // 拉取飞书「免训不免考跟进」姓名→门店映射（裂变归属，每晚快照刷新）
 }).catch(e => {
