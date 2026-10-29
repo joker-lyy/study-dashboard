@@ -863,9 +863,10 @@ function pcOpen(courseId, trEl) {
       st.roster = j.roster || [];
       st.genAt = j.generatedAt || "";
       st.pt = c.pt || (j.pts || {})[String(courseId)] || "";
-      /* 标题栏回填发布时间（data.json 无 pt 时从静态文件补） */
+      /* 标题栏回填发布时间（仅当模板未渲染过时补，防重复） */
       if (st.pt) {
-        const ttl = document.getElementById("pcTitle"); if (ttl) ttl.innerHTML += ` <span style="color:var(--t2);font-size:12px;margin-left:10px">📅 发布 ${esc(st.pt)}</span>`;
+        const ttl = document.getElementById("pcTitle");
+        if (ttl && !ttl.textContent.includes("发布")) ttl.innerHTML += ` <span style="color:var(--t2);font-size:12px;margin-left:10px">📅 发布 ${esc(st.pt)}</span>`;
       }
       return j;
     });
