@@ -251,14 +251,17 @@ def compute_frozen(p, as_of):
 
 
 def _load_prev_frozen():
-    """上一版 data.json 各计划的 frozen 块（白天轮搬运用），读取失败返回空"""
-    try:
-        with open(os.path.join(HERE, "data", "data.json"), encoding="utf-8") as f:
-            prev = json.load(f)
-        return {str(p.get("planId")): p["frozen"]
-                for p in (prev.get("plans") or []) if p.get("frozen")}
-    except Exception:
-        return {}
+    """上一版 data.json / archive.json 各计划的 frozen 块（白天轮搬运用），读取失败返回空"""
+    out = {}
+    for name in ("data.json", "archive.json"):  # fix235: 老计划拆到 archive 后 frozen 也要能搬运
+        try:
+            with open(os.path.join(HERE, "data", name), encoding="utf-8") as f:
+                prev = json.load(f)
+            out.update({str(p.get("planId")): p["frozen"]
+                        for p in (prev.get("plans") or []) if p.get("frozen")})
+        except Exception:
+            pass
+    return out
 
 
 def attach_frozen(data):
@@ -994,6 +997,37 @@ def main():
     attach_frozen(data)
 
     os.makedirs(os.path.join(HERE, "data"), exist_ok=True)
+
+    # fix235: 数据分片提速 —— data.json 只保留近 120 天计划（首屏体积从 ~11MB 降到 ~5MB），
+    # 更早计划挪 data/archive.json，前端首屏渲染后后台加载合并（功能不受影响）。
+    from datetime import date as _date
+    _today = _date.today()
+    _recent, _older = [], []
+    for _p in data.get("plans", []):
+        try:
+            _sd = _date.fromisoformat(str(_p.get("startDate", ""))[:10])
+            (_recent if (_today - _sd).days <= 120 else _older).append(_p)
+        except Exception:
+            _recent.append(_p)  # 无日期的安全起见留主文件
+    if _older:
+        _arch_path = os.path.join(HERE, "data", "archive.json")
+        _by_id = {}
+        try:  # 旧 archive 优先占位（保留历史 frozen），再被本轮数据覆盖
+            _prev_arch = json.load(open(_arch_path, encoding="utf-8"))
+            for _p in (_prev_arch.get("plans") or []):
+                _by_id[str(_p.get("planId"))] = _p
+        except Exception:
+            pass
+        for _p in _older:
+            _by_id[str(_p.get("planId"))] = _p
+        _arch_tmp = _arch_path + ".tmp"
+        with open(_arch_tmp, "w", encoding="utf-8") as f:
+            json.dump({"generatedAt": data.get("generatedAt"), "plans": list(_by_id.values())}, f, ensure_ascii=False)
+        os.replace(_arch_tmp, _arch_path)
+        data["plans"] = _recent
+        data["archivePlans"] = len(_by_id)
+        print(f"分片: 近120天 {len(_recent)} 个计划留 data.json，{len(_by_id)} 个历史计划在 archive.json")
+
     out_path = os.path.join(HERE, "data", "data.json")
     tmp = out_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:

@@ -638,7 +638,7 @@ function renderPublicCourses() {
   /* 分享直达（#p=<courseId>）：任何一次公开课面板渲染后自动重开该课明细（热刷新重绘也不丢） */
   if (window.__pcAuto && list.some(x => String(x.courseId) === String(window.__pcAuto))) pcOpen(window.__pcAuto);
 }
-function pcClose() { const m = document.getElementById("pcModal"); if (m) m.innerHTML = ""; window.__pc = null; window.__pcAuto = null; }
+function pcClose() { const m = document.getElementById("pcModal"); if (m) m.innerHTML = ""; window.__pc = null; window.__pcAuto = null; closeOrPcCloseThenRender(); }
 function pcSetTag(t) { state.pcTag = t; renderPublicCourses(); }
 /* 只重绘课程表格（10/29 修复搜索框输入即失焦/输入法被打断：面板 innerHTML 不整体重建，输入框保持焦点） */
 function pcRenderTable() {
@@ -1546,7 +1546,7 @@ function renderStoreModal() {
     <div class="filters">${cats.map(c => `<button class="${state.empFilter === c ? "active" : ""}" onclick="state.empFilter='${c}';renderStoreModal()">${c}</button>`).join("")}</div>
     ${body}`;
 }
-function closeModal() { document.getElementById("mask").classList.remove("show"); }
+function closeModal() { document.getElementById("mask").classList.remove("show"); closeOrPcCloseThenRender(); }
 
 /* ---------- 员工培训/晋升 · 学习地图 ---------- */
 function setPRegion(v) { state.pRegion = v; state.pGroup = "全部"; state.pStore = "全部"; renderPromo(); }
@@ -2397,7 +2397,28 @@ function render() {
   if (rb) rb.style.display = state.tab === "直营学习明细" ? "none" : "";
 }
 
-fetch("data/data.json?v=" + Date.now()).then(r => r.json()).then(d => {
+/* fix235: 历史计划分片（archive.json）后台合并 —— 首屏只加载近120天，老计划不阻塞渲染。
+   合并后若无弹窗打开则重渲染一次；有弹窗则挂 __archDirty，关闭弹窗时再渲染 */
+function hydrateArchive() {
+  if (location.hash.startsWith("#p=")) return; // 分享直达模式不需要历史计划
+  fetch("data/archive.json").then(r => r.ok ? r.json() : null).then(a => {
+    if (!a || !a.plans || !a.plans.length) return;
+    const have = new Set((DATA.plans || []).map(p => String(p.planId)));
+    const add = a.plans.filter(p => !have.has(String(p.planId)));
+    if (!add.length) return;
+    DATA.plans = (DATA.plans || []).concat(add);
+    const busy = document.getElementById("mask")?.classList.contains("show")
+      || (document.getElementById("pcModal") || {}).innerHTML;
+    if (busy) window.__archDirty = true;
+    else render();
+  }).catch(() => {});
+}
+function closeOrPcCloseThenRender() { // 弹窗关闭后补一次渲染（若 archive 合并被弹窗推迟）
+  if (window.__archDirty) { window.__archDirty = false; render(); }
+}
+
+/* fix235 提速：不带 ?v= 缓存破坏，走 ETag 304（数据没变秒开）；历史计划由 archive.json 后台合并 */
+fetch("data/data.json").then(r => r.json()).then(d => {
   DATA = d;
   document.getElementById("genTime").textContent = "数据更新于 " + String(d.generatedAt || "").slice(0, 16);  // 时:分即可，不显示秒
   render();
@@ -2412,6 +2433,7 @@ fetch("data/data.json?v=" + Date.now()).then(r => r.json()).then(d => {
   }
   hydrateCatOv(); // 拉取落盘的分类覆盖，防止 localStorage 被清/换源后丢失
   hydrateFissionMap(); // 拉取飞书「免训不免考跟进」姓名→门店映射（裂变归属，每晚快照刷新）
+  hydrateArchive(); // fix235: 后台加载历史计划分片（data/archive.json），合并后择机重渲染
 }).catch(e => {
   document.getElementById("main").innerHTML = `<div class="sec empty">数据加载失败：${esc(e)}<br>请先运行 fetch_study.py，并用「启动看板.bat」打开</div>`;
 });
@@ -2522,7 +2544,7 @@ function applyShareView(){
     if (!window.__soloRefresh) {
       window.__soloRefresh = setInterval(async () => {
         try {
-          const d = await (await fetch("data/data.json?v=" + Date.now(), { cache: "no-store" })).json();
+          const d = await (await fetch("data/data.json")).json(); // fix235: 走 ETag 304，未变不重下
           if (d.generatedAt !== DATA.generatedAt) { DATA = d; window.__directIdx = null; render(); }
         } catch (e) {}
       }, 5 * 60 * 1000);
