@@ -371,8 +371,22 @@ function confirmMove(planId) {
 }
 function isSurvey(p) { return SURVEY_RE.test(p.planName || ""); }
 const PUB_GROUPS = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
+/* 「学习任务」页签（10/29 原「线上线下培训」改名+扩容）：内容=高瑞瑜/黄昭航/潘英化/赖奕毅
+   四人建的 ALL 任务（ID 集合与 fetch_study TRAIN_GROUP_CREATORS 一致），
+   剔除 新加盟商培训/裂变加盟商培训（已有独立页签）与名称含「测试」的；内部 state.cat 不变兼容旧分享 */
+const TASK_CREATORS = { "10000000000108": 1, "10000000000279": 1, "10000000000989": 1, "10000000000991": 1 };
+function isTaskPlan(p) {
+  if (!TASK_CREATORS[String(p.creator || "")]) return false;
+  const c = effCat(p);
+  if (c === "新加盟商培训" || c === "裂变加盟商培训") return false;
+  if (/测试/.test(p.planName || "")) return false;
+  return true;
+}
 function plansOf(cat, gOverride) {
-  let arr = DATA.plans.filter(p => effCat(p) === cat && !isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
+  let arr = cat === "线上线下培训"
+    ? DATA.plans.filter(isTaskPlan)
+    : DATA.plans.filter(p => effCat(p) === cat);
+  arr = arr.filter(p => !isSurvey(p) && !PLAN_EXCLUDE.some(k => (p.planName || "").includes(k)));
   // 其他 Tab：只保留四个组发布的计划，支持组别导航筛选
   if (cat === "其他") { const g = gOverride || state.gFilter; arr = arr.filter(p => p.pubGroup && (g === "全部" || p.pubGroup === g)); }
   return arr;
@@ -591,7 +605,7 @@ function renderOverview() {
       return `<tr><td>${esc(p.planName)}</td><td>${p.startDate || "-"}</td><td>${ovRate}</td></tr>`;
     }).join("") || `<tr><td colspan=3 class=empty>暂无计划</td></tr>`;
     return `<div class="sec">
-      <h3>${cat} <span class="badge b-blue">${plans.length} 个计划</span></h3>
+      <h3>${cat === "线上线下培训" ? "学习任务" : cat} <span class="badge b-blue">${plans.length} 个计划</span></h3>
       <div class="cards">
         <div class="card"><div class="k">学员总数</div><div class="v">${emps}</div></div>
         <div class="card"><div class="k">已完成</div><div class="v">${done}</div></div>
@@ -959,8 +973,8 @@ function renderCat() {
   const opts = plans.map((x, i) => `<option value="${i}" ${i === state.planIdx ? "selected" : ""}>${esc(x.planName)}（${x.startDate || "?"}）</option>`).join("");
   const multiBox = `<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap"><input type="checkbox" onchange="state.multi=this.checked;state.multiSel=[];renderCat()"> 多选汇总</label>`;
   const mvSel = `<select id="mvSel" title="选择要转移到的板块（点「确认转移」生效）" style="max-width:170px">
-      <option value="" ${!CAT_OV[p.planId] ? "selected" : ""}>📁 ${esc(effCat(p))}</option>
-      ${["线上线下培训", "其他"].filter(c => c !== effCat(p)).map(c => `<option value="${c}" ${CAT_OV[p.planId] === c ? "selected" : ""}>移到「${c}」</option>`).join("")}
+      <option value="" ${!CAT_OV[p.planId] ? "selected" : ""}>📁 ${esc(effCat(p) === "线上线下培训" ? "学习任务" : effCat(p))}</option>
+      ${["线上线下培训", "其他"].filter(c => c !== effCat(p)).map(c => `<option value="${c}" ${CAT_OV[p.planId] === c ? "selected" : ""}>移到「${c === "线上线下培训" ? "学习任务" : c}」</option>`).join("")}
     </select>
     <button class="btn" style="padding:6px 12px;font-size:12px;white-space:nowrap" onclick="confirmMove('${p.planId}')" title="选好目标板块后点此确认转移；选回「📁 当前板块」再确认=撤销转移">确认转移</button>`;
   const ov = p.overview || {};
@@ -2366,7 +2380,7 @@ function render() {
   // 「直营学习明细」排在「其他」前面（用户拍板 9/19）：分类保持原顺序，「其他」挪到直营之后
   const catsSorted = visibleCats.filter(c => c !== "其他");
   /* 「其他」页签显示名改「课程学习情况」（10/29），内部 state.tab 仍为「其他」兼容旧分享链接 */
-  const tabs = [["概述", ""], ...catsSorted.map(c => [c, ""]), ["直营学习明细", ""], ...(visibleCats.includes("其他") ? [["其他", "课程学习情况"]] : []), ["评价管理", ""], ["离职管理档案", ""]];
+  const tabs = [["概述", ""], ...catsSorted.map(c => [c, c === "线上线下培训" ? "学习任务" : ""]), ["直营学习明细", ""], ...(visibleCats.includes("其他") ? [["其他", "课程学习情况"]] : []), ["评价管理", ""], ["离职管理档案", ""]];
   document.getElementById("mainTabs").innerHTML = tabs.map(([t, lbl]) => {
     let n;
     if (t === "概述" || t === "评价管理" || t === "离职管理档案") n = "";
