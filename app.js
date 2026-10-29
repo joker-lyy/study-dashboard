@@ -371,15 +371,11 @@ function confirmMove(planId) {
 }
 function isSurvey(p) { return SURVEY_RE.test(p.planName || ""); }
 const PUB_GROUPS = ["培训组(直营组)", "新店运营组", "加盟营运组", "新店筹建组"];
-/* 「学习任务」页签（10/29 原「线上线下培训」改名+扩容）：内容=高瑞瑜/黄昭航/潘英化/赖奕毅
-   四人建的 ALL 任务（ID 集合与 fetch_study TRAIN_GROUP_CREATORS 一致），
-   剔除 新加盟商培训/裂变加盟商培训（已有独立页签）与名称含「测试」的；内部 state.cat 不变兼容旧分享 */
-const TASK_CREATORS = { "10000000000108": 1, "10000000000279": 1, "10000000000989": 1, "10000000000991": 1 };
+/* 「学习任务」页签（10/29 二改）：内容=培训组(直营组)发布、平台分类为「线上直播课」/「项目学习任务」
+   的计划（不限创建人），剔测试与问卷；内部 state.cat 不变兼容旧分享 */
 function isTaskPlan(p) {
-  if (!TASK_CREATORS[String(p.creator || "")]) return false;
-  const c = effCat(p);
-  if (c === "新加盟商培训" || c === "裂变加盟商培训") return false;
-  if (c === "员工培训/晋升") return false; // 晋升类（晋升店长/晋升笔试考核等）留在「员工培训/晋升」板块（10/29 Rain）
+  if ((p.pubGroup || "") !== "培训组(直营组)") return false;
+  if (!["线上直播课", "项目学习任务"].includes(p.categoryName || "")) return false;
   if (/测试/.test(p.planName || "")) return false;
   return true;
 }
