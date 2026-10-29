@@ -2352,13 +2352,14 @@ function render() {
   });
   // 「直营学习明细」排在「其他」前面（用户拍板 9/19）：分类保持原顺序，「其他」挪到直营之后
   const catsSorted = visibleCats.filter(c => c !== "其他");
-  const tabs = [["概述", ""], ...catsSorted.map(c => [c, ""]), ["直营学习明细", ""], ...(visibleCats.includes("其他") ? [["其他", ""]] : []), ["评价管理", ""], ["离职管理档案", ""]];
-  document.getElementById("mainTabs").innerHTML = tabs.map(([t]) => {
+  /* 「其他」页签显示名改「课程学习情况」（10/29），内部 state.tab 仍为「其他」兼容旧分享链接 */
+  const tabs = [["概述", ""], ...catsSorted.map(c => [c, ""]), ["直营学习明细", ""], ...(visibleCats.includes("其他") ? [["其他", "课程学习情况"]] : []), ["评价管理", ""], ["离职管理档案", ""]];
+  document.getElementById("mainTabs").innerHTML = tabs.map(([t, lbl]) => {
     let n;
     if (t === "概述" || t === "评价管理" || t === "离职管理档案") n = "";
     else if (t === "直营学习明细") n = `<span class="n">${(window.__directIdx || directIndex()).emps.length}</span>`;
     else n = `<span class="n">${plansInRange(t).length}</span>`;
-    return `<button class="${state.tab === t ? "active" : ""}" onclick="state.tab='${t}';state.planIdx=0;render()">${t}${n}</button>`;
+    return `<button class="${state.tab === t ? "active" : ""}" onclick="state.tab='${t}';state.planIdx=0;render()">${lbl || t}${n}</button>`;
   }).join("");
   if (!tabs.some(([t]) => t === state.tab)) { state.tab = "概述"; state.planIdx = 0; }
   if (state.tab === "概述") renderOverview();
