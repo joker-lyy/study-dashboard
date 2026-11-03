@@ -613,7 +613,7 @@ function renderOverview() {
   }).join("");
   el.innerHTML = `<div class="summary-sec">${catCards}</div>
     <div class="sec">
-      <h3>课程学习情况 <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:8px" onclick="pcDashManage()">⚙ 管理关注</button></h3>
+      <h3>课程学习情况 <span id="pcFavCnt" class="badge b-blue"></span><button class="btn" style="padding:4px 10px;font-size:12px;margin-left:8px" onclick="pcDashManage()">⚙ 管理关注</button></h3>
       <div id="pcDashCards" class="cards" style="display:flex;flex-wrap:wrap;gap:10px"></div>
     </div>`;
   pcDashRender();
@@ -644,21 +644,37 @@ function pcDashRender() {
   const box = document.getElementById("pcDashCards"); if (!box) return;
   const list = DATA.publicCourses || [];
   const fav = pcFavGet().filter(id => list.some(c => String(c.courseId) === id));
+  const cnt = document.getElementById("pcFavCnt"); if (cnt) cnt.textContent = fav.length + " 门课程";
   if (!fav.length) { box.innerHTML = `<div style="color:var(--t2);font-size:13px;padding:8px 0">还没有关注课程，点右上「⚙ 管理关注」勾选要展示的课程。</div>`; return; }
   box.innerHTML = `<div style="color:var(--t2);font-size:13px;padding:8px 0">加载中…</div>`;
   pcEmpCache().then(j => {
     const box2 = document.getElementById("pcDashCards"); if (!box2) return;
     if (!j) { box2.innerHTML = `<div style="color:#e6a23c;font-size:13px;padding:8px 0">课程明细数据加载失败，请刷新重试。</div>`; return; }
-    box2.innerHTML = fav.map(id => {
-      const c = list.find(x => String(x.courseId) === id); if (!c) return "";
+  box2.innerHTML = (() => {
+    const rows = fav.map(id => {
+      const c = list.find(x => String(x.courseId) === id); if (!c) return null;
       const s = pcCourseStat(j, id);
-      const rate = s.total ? Math.round(s.done / s.total * 100) : 0;
-      return `<div class="card" style="cursor:pointer;min-width:210px;flex:1" onclick="pcOpen(${c.courseId})" title="点击查看明细">
-        <div class="k" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.courseName)}</div>
-        <div class="v">${rate}<small>%</small></div>
-        <div style="font-size:11px;color:var(--t2);margin-top:2px">${s.done}/${s.total} 人 · 最近 ${esc((s.last || "—").slice(0, 16))}</div>
-      </div>`;
-    }).join("");
+      const rate = s.total ? s.done / s.total * 100 : 0;
+      return { c, s, rate };
+    }).filter(Boolean);
+    if (!rows.length) return `<div style="color:var(--t2);font-size:13px;padding:8px 0">关注的课程已下架，点上方「⚙ 管理关注」重新勾选。</div>`;
+    const totDone = rows.reduce((a, r) => a + r.s.done, 0);
+    const avg = rows.length ? rows.reduce((a, r) => a + r.rate, 0) / rows.length : 0;
+    const lastAll = rows.reduce((m, r) => (r.s.last || "") > m ? r.s.last : m, "");
+    const trs = rows.sort((a, b) => b.rate - a.rate).map(r => `
+      <tr style="cursor:pointer" onclick="pcOpen(${r.c.courseId})" title="点击查看明细">
+        <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px">${esc(r.c.courseName)}</td>
+        <td>${esc((r.s.last || "—").slice(0, 16))}</td>
+        <td>${r.rate.toFixed(1)}%</td>
+      </tr>`).join("");
+    return `<div class="cards">
+        <div class="card"><div class="k">关注课程</div><div class="v">${rows.length}</div></div>
+        <div class="card"><div class="k">已完成人次</div><div class="v">${totDone}</div></div>
+        <div class="card"><div class="k">平均完成率</div><div class="v">${avg.toFixed(1)}<small>%</small></div></div>
+      </div>
+      <table><tr><th>课程</th><th>最近完成</th><th>整体完成率</th></tr>${trs}</table>
+      <div style="font-size:11px;color:var(--t2);margin-top:6px">最近完成：${esc(lastAll || "—")} · 点击课程行查看门店/人员明细</div>`;
+  })();
   });
 }
 function pcDashManage() {
