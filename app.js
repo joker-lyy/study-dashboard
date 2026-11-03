@@ -611,11 +611,11 @@ function renderOverview() {
       <table><tr><th>最近计划</th><th>开始日期</th><th>整体完成率</th></tr>${latest}</table>
     </div>`;
   }).join("");
-  el.innerHTML = `<div class="summary-sec">${catCards}</div>
-    <div class="sec">
+  const pcSec = `<div class="sec" style="margin-bottom:0">
       <h3>课程学习情况 <span id="pcFavCnt" class="badge b-blue"></span><button class="btn" style="padding:4px 10px;font-size:12px;margin-left:8px" onclick="pcDashManage()">⚙ 管理关注</button></h3>
-      <div id="pcDashCards" class="cards" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+      <div id="pcDashCards"></div>
     </div>`;
+  el.innerHTML = `<div class="summary-sec">${catCards}${pcSec}</div>`;
   pcDashRender();
 }
 
