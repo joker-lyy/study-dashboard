@@ -611,7 +611,85 @@ function renderOverview() {
       <table><tr><th>最近计划</th><th>开始日期</th><th>整体完成率</th></tr>${latest}</table>
     </div>`;
   }).join("");
-  el.innerHTML = `<div class="summary-sec">${catCards}</div>`;
+  el.innerHTML = `<div class="summary-sec">${catCards}</div>
+    <div class="sec">
+      <h3>课程学习情况 <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:8px" onclick="pcDashManage()">⚙ 管理关注</button></h3>
+      <div id="pcDashCards" class="cards" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+    </div>`;
+  pcDashRender();
+}
+
+/* ---------- 概述 · 课程学习情况卡（11/3 Rain：勾选关注的公开课在概述页展示） ---------- */
+/* 勾选存 localStorage（pcFavIds），只影响本浏览器；完成率口径与公开课明细一致=去重完成人数/在职花名册 */
+function pcFavGet() {
+  try { return (JSON.parse(localStorage.getItem("pcFavIds") || "[]") || []).map(String); } catch (e) { return []; }
+}
+function pcFavSet(ids) { try { localStorage.setItem("pcFavIds", JSON.stringify(ids)); } catch (e) {} }
+function pcEmpCache() {
+  if (window.__pcEmpP) return window.__pcEmpP;
+  window.__pcEmpP = fetch("data/public_course_emp.json", { cache: "no-store" }).then(r => r.json()).catch(() => null);
+  return window.__pcEmpP;
+}
+function pcCourseStat(j, courseId) {
+  const badStore = s => /测试/.test(s || "") || /[，,、;；]/.test(s || "");
+  const rows0 = ((j.courses || {})[String(courseId)] || []).filter(e => !badStore(e.s));
+  const roster = (j.roster || []).filter(e => !badStore(e.s));
+  const dedup = {}; /* 同人同店去重，保留最近完成时间（与 pcRenderBody 同口径） */
+  rows0.forEach(e => { const k = (e.n || "") + "|" + (e.s || ""); if (!dedup[k] || (e.t || "") > dedup[k].t) dedup[k] = e; });
+  const rows = Object.values(dedup);
+  const last = rows.reduce((m, e) => (e.t || "") > m ? e.t : m, "");
+  return { done: rows.length, total: roster.length, last };
+}
+function pcDashRender() {
+  const box = document.getElementById("pcDashCards"); if (!box) return;
+  const list = DATA.publicCourses || [];
+  const fav = pcFavGet().filter(id => list.some(c => String(c.courseId) === id));
+  if (!fav.length) { box.innerHTML = `<div style="color:var(--t2);font-size:13px;padding:8px 0">还没有关注课程，点右上「⚙ 管理关注」勾选要展示的课程。</div>`; return; }
+  box.innerHTML = `<div style="color:var(--t2);font-size:13px;padding:8px 0">加载中…</div>`;
+  pcEmpCache().then(j => {
+    const box2 = document.getElementById("pcDashCards"); if (!box2) return;
+    if (!j) { box2.innerHTML = `<div style="color:#e6a23c;font-size:13px;padding:8px 0">课程明细数据加载失败，请刷新重试。</div>`; return; }
+    box2.innerHTML = fav.map(id => {
+      const c = list.find(x => String(x.courseId) === id); if (!c) return "";
+      const s = pcCourseStat(j, id);
+      const rate = s.total ? Math.round(s.done / s.total * 100) : 0;
+      return `<div class="card" style="cursor:pointer;min-width:210px;flex:1" onclick="pcOpen(${c.courseId})" title="点击查看明细">
+        <div class="k" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.courseName)}</div>
+        <div class="v">${rate}<small>%</small></div>
+        <div style="font-size:11px;color:var(--t2);margin-top:2px">${s.done}/${s.total} 人 · 最近 ${esc((s.last || "—").slice(0, 16))}</div>
+      </div>`;
+    }).join("");
+  });
+}
+function pcDashManage() {
+  const list = DATA.publicCourses || [];
+  const fav = pcFavGet();
+  const old = document.getElementById("pcFavDlg"); if (old) old.remove();
+  const ov = document.createElement("div");
+  ov.id = "pcFavDlg";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center";
+  ov.innerHTML = `<div style="background:var(--card);color:var(--t1);border-radius:14px;max-width:560px;width:92%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)" onclick="event.stopPropagation()">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <b>管理关注的课程</b>
+      <div style="display:flex;gap:8px">
+        <button class="btn" style="padding:5px 12px;font-size:12px" onclick="pcFavSave()">保存</button>
+        <button class="btn" style="padding:5px 12px;font-size:12px" onclick="document.getElementById('pcFavDlg').remove()">取消</button>
+      </div>
+    </div>
+    <div style="overflow:auto;padding:10px 18px;font-size:13px">
+      ${list.map(c => `<label style="display:flex;gap:8px;align-items:center;padding:6px 0;cursor:pointer">
+        <input type="checkbox" data-cid="${c.courseId}" ${fav.includes(String(c.courseId)) ? "checked" : ""}>
+        <span>${esc(c.courseName)}</span></label>`).join("") || `<div style="color:var(--t2)">暂无课程</div>`}
+    </div>
+    <div style="padding:8px 18px 12px;font-size:11px;color:var(--t2)">勾选保存后，概述页「课程学习情况」只展示所选课程；选择保存在本浏览器。</div>
+  </div>`;
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+function pcFavSave() {
+  const dlg = document.getElementById("pcFavDlg"); if (!dlg) return;
+  pcFavSet([...dlg.querySelectorAll("input[type=checkbox]:checked")].map(i => i.dataset.cid));
+  dlg.remove(); pcDashRender();
 }
 
 /* ---------- 分类页 ---------- */
@@ -898,7 +976,8 @@ window.pcShare = function () {
 };
 
 function pcOpen(courseId, trEl) {
-  const m = document.getElementById("pcModal"); if (!m) return;
+  let m = document.getElementById("pcModal");
+  if (!m) { m = document.createElement("div"); m.id = "pcModal"; document.body.appendChild(m); } /* 概述页课程卡无现成容器，动态补（fix242） */
   const c = (DATA.publicCourses || []).find(x => String(x.courseId) === String(courseId)) || {};
   window.__pc = { courseId, region: "全部", done: "all", exp: {}, rows: [], roster: [], _init: false };
   const isShare = document.body.classList.contains("share-mode");
