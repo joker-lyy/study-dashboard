@@ -664,7 +664,7 @@ function pcDashRender() {
     const trs = rows.sort((a, b) => b.rate - a.rate).map(r => `
       <tr style="cursor:pointer" onclick="pcOpen(${r.c.courseId})" title="点击查看明细">
         <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px">${esc(r.c.courseName)}</td>
-        <td>${esc((r.s.last || "—").slice(0, 16))}</td>
+        <td>${esc((r.s.last || "—").slice(0, 10))}</td>
         <td>${r.rate.toFixed(1)}%</td>
       </tr>`).join("");
     return `<div class="cards">
@@ -673,7 +673,7 @@ function pcDashRender() {
         <div class="card"><div class="k">平均完成率</div><div class="v">${avg.toFixed(1)}<small>%</small></div></div>
       </div>
       <table><tr><th>课程</th><th>最近完成</th><th>整体完成率</th></tr>${trs}</table>
-      <div style="font-size:11px;color:var(--t2);margin-top:6px">最近完成：${esc(lastAll || "—")} · 点击课程行查看门店/人员明细</div>`;
+      <div style="font-size:11px;color:var(--t2);margin-top:6px">最近完成：${esc((lastAll || "—").slice(0, 10))} · 点击课程行查看门店/人员明细</div>`;
   })();
   });
 }
