@@ -663,8 +663,8 @@ function pcDashRender() {
     const lastAll = rows.reduce((m, r) => (r.s.last || "") > m ? r.s.last : m, "");
     const trs = rows.sort((a, b) => b.rate - a.rate).map(r => `
       <tr style="cursor:pointer" onclick="pcOpen(${r.c.courseId})" title="点击查看明细">
-        <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px">${esc(r.c.courseName)}</td>
-        <td>${esc((r.s.last || "—").slice(0, 10))}</td>
+        <td>${esc(r.c.courseName)}</td>
+        <td style="white-space:nowrap">${esc((r.s.last || "—").slice(0, 10))}</td>
         <td>${r.rate.toFixed(1)}%</td>
       </tr>`).join("");
     return `<div class="cards">
