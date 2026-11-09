@@ -1292,15 +1292,25 @@ function aggDetailTable(p, emps) {
       // 必修四类=视频/图文课件(1/2/8/10)：面授(3，仅签到)不计入
       // 必修课列=图文/视频课件(isMediaT)，与实操/考试列互不重叠（2026-10-14 Rain 定稿）
       const learn = sts.filter(isMediaT);
-      // 实操=上传/实操考核(type5，如拼盘上传)：日格此前没有显示位 → 阶段完成情况的「进行中/未开始」
-      // 在明细里看不出缺什么（10/17 Rain 对账发现）。合格口径与 stageRequired 一致=examPassT（已上传未打分=待审核也算未完成）
-      const prax = sts.filter(t => t[1] === 5);
+      // 必修课列：显示完成数/应完成数，未完成时列出具体缺的课程名
+      const learnDone = learn.filter(t => t[2] === "W");
+      const learnMissing = learn.filter(t => t[2] !== "W").map(t => t[0]);
+      let learnStr = "";
+      if (learn.length) {
+        const allDone = learn.every(t => t[2] === "W");
+        const color = allDone ? "var(--t2)" : "#e64340";
+        const fontWeight = allDone ? "400" : "600";
+        const countTxt = `${learnDone.length}/${learn.length}`;
+        // 未完成时，列出具体缺的课程名（最多3个，避免溢出）
+        const missingTxt = learnMissing.length ? `<div style="font-size:10px;color:#e64340;margin-top:2px">缺：${learnMissing.slice(0, 3).join("、")}${learnMissing.length > 3 ? ` 等${learnMissing.length}门` : ""}</div>` : "";
+        learnStr = `<div style="font-size:11px;color:${color};font-weight:${fontWeight}">必修课 ${countTxt}</div>${missingTxt}`;
+      }
       let scoreStr = "";
       if (exams.length) {
         // 多科竖排，每科一行，避免横向超出格子；无考试则不显示该行
         scoreStr = `<div>${exams.map(t => scoreCell(t, false)).join("</div><div>")}</div>`;
       }
-      const learnStr = learn.length ? `<div style="font-size:11px;color:${learn.every(t => t[2] === "W") ? "var(--t2)" : "#e64340"}">必修课 ${cnt(learn)}</div>` : "";
+      const prax = sts.filter(t => t[1] === 5); // 实操=类型5（v155 原逻辑，定义行曾在重构中丢失导致 prax is not defined）
       const pDone = prax.filter(t => examPassT(t)).length;
       const praxStr = prax.length ? `<div style="font-size:11px;font-weight:${pDone < prax.length ? 600 : 400};color:${pDone < prax.length ? "#e64340" : "var(--t2)"}">实操 ${pDone}/${prax.length}</div>` : "";
       return `<td style="text-align:center;border-left:1px solid var(--line);font-size:12px;line-height:1.5;vertical-align:top"><div>${att}</div>${scoreStr}${praxStr}${learnStr}</td>`;
@@ -2878,7 +2888,7 @@ window.sharePng = async function (mode) {
       if (!row.cT) lines.push(["课程学习", "—", "na"]);
       else if (row.cD === row.cT) lines.push(["课程学习", row.cD + "/" + row.cT, "ok"]);
       else if (row.cD === 0) lines.push(["课程学习", "0/" + row.cT, "bad"]);
-      else lines.push(["课程学习", row.cD + "/" + row.cT, "part"]);
+      else lines.push(["课程学习", row.cD + "/" + row.cT, "bad"]);
       if (!row.exams.length) lines.push(["考试", "—", "na"]);
       else for (const ex of row.exams) {
         if (ex.pass) lines.push(["考试", ex.name + " " + ex.score + "分", "ok"]);
@@ -2938,7 +2948,7 @@ window.sharePng = async function (mode) {
     ".drcard .lb{color:#98a0b0;font-size:11.5px;flex:none}" +
     ".drcard .v{font-size:12px;text-align:right}" +
     ".drcard .ok{color:#3B6D11;font-weight:500}.drcard .bad{color:#A32D2D;font-weight:500}" +
-    ".drcard .wait{color:#854F0B;font-weight:500}.drcard .part{color:#185FA5;font-weight:500}" +
+    ".drcard .wait{color:#854F0B;font-weight:500}.drcard .part{color:#185FA5;font-weight:500}.drcard .bad-incomplete{color:#A32D2D;font-weight:600}" +
     ".drcard .time{color:#1A2A4A}.drcard .na{color:#9aa1af}" +
     ".drcard .leg{display:flex;gap:12px;margin-top:9px;font-size:11.5px;color:#7a8399;flex-wrap:wrap}";
 
