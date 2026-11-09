@@ -98,8 +98,9 @@ function fmtDT(d) {
 }
 
 // 一个学员的一个阶段 → 4 项（课程学习/考试/上传作业/完成时间）
+// 2026-11-09 对齐看板「门店学习日报」逐项口径：考试/上传作业逐条列明细（缺考/待审核/分数），不再聚合计数
 function stageRow(stage) {
-  let cT = 0, cD = 0; const exams = [];
+  let cT = 0, cD = 0; const exams = []; const ups = [];
   let uT = 0, uP = 0, uWait = 0;
   let allDone = true; const times = [];
   for (const t of (stage.t || [])) {
@@ -112,16 +113,18 @@ function stageRow(stage) {
       if (pass) { if (hasTime) times.push(tm); } else allDone = false;
     } else if (UP_T.has(ty)) {
       uT++;
+      // DYJ/待阅卷 = 已提交待老师打分 → 待审核，不是缺考（对齐 app.js fix 10/27 口径）
+      const wait = stt === 'DYJ' || t[4] === '待阅卷' || (done && score == null);
+      ups.push({ name, stt, score, done, wait });
       if (done && score != null) { uP++; if (hasTime) times.push(tm); }
-      else if (done) { uWait++; allDone = false; }
-      else allDone = false;
+      else if (!wait) allDone = false;
     } else { // 课程学习（含未知类型兜底归入课程）
       cT++;
       if (done) { cD++; if (hasTime) times.push(tm); } else allDone = false;
     }
   }
   const finish = allDone && times.length ? times.sort().pop() : null;
-  return { name: stage.n || '', cT, cD, exams, uT, uP, uWait, finish };
+  return { name: stage.n || '', cT, cD, exams, ups, uT, uP, uWait, finish };
 }
 
 // ── 飞书「免训不免考跟进（饼干）」表：按加盟客户姓名搜登记门店 ──
@@ -219,19 +222,22 @@ function buildStoreHtml(plan, store, learners, nowStr, generatedAt) {
     else if (row.cD === row.cT) lines.push(['课程学习', row.cD + '/' + row.cT, 'ok']);
     else if (row.cD === 0) lines.push(['课程学习', '0/' + row.cT, 'bad']);
     else lines.push(['课程学习', row.cD + '/' + row.cT, 'part']);
-    // 考试
+    // 考试（逐项，口径同 app.js 门店学习日报）
     if (!row.exams.length) lines.push(['考试', '—', 'na']);
     else for (const ex of row.exams) {
       if (ex.pass) lines.push(['考试', ex.name + ' ' + ex.score + '分', 'ok']);
       else if (ex.wait) lines.push(['考试', ex.name + ' 待审核', 'wait']);
-      else if (ex.stt === 'W') lines.push(['考试', ex.name + ' ' + (ex.score != null ? ex.score + '分' : '未出分'), 'bad']);
-      else lines.push(['考试', ex.name + ' 未考', 'bad']);
+      else if (ex.stt === 'W') lines.push(['考试', ex.name + ' ' + (ex.score != null ? ex.score + '分(未过)' : '未出分'), 'bad']);
+      else lines.push(['考试', ex.name + ' 缺考', 'bad']);
     }
-    // 上传作业
+    // 上传作业（逐项，口径同 app.js 门店学习日报）
     if (!row.uT) lines.push(['上传作业', '—', 'na']);
-    else if (row.uWait > 0) lines.push(['上传作业', '待审核×' + row.uWait, 'wait']);
-    else if (row.uP === row.uT) lines.push(['上传作业', row.uP + '/' + row.uT, 'ok']);
-    else lines.push(['上传作业', row.uP + '/' + row.uT, 'bad']);
+    else for (const up of (row.ups || [])) {
+      if (up.wait) lines.push(['上传作业', up.name + ' 待审核', 'wait']);
+      else if (!up.done) lines.push(['上传作业', up.name + ' 缺考', 'bad']);
+      else if (up.score >= PASS_SCORE) lines.push(['上传作业', up.name + ' ' + up.score + '分', 'ok']);
+      else lines.push(['上传作业', up.name + ' ' + up.score + '分(未过)', 'bad']);
+    }
     // 完成时间
     lines.push(['完成时间', row.finish ? row.finish.slice(5, 16) : '—', row.finish ? 'time' : 'na']);
     return lines.map(l =>
