@@ -68,5 +68,19 @@
   "status": 1,
   "lastEmpCount": 335,
   "lastSeen": "2026-11-10"
+ },
+ "10000002868946": {
+  "mapName": "苍井食堂-后厨通岗",
+  "categoryName": "新手村",
+  "status": 1,
+  "lastEmpCount": 14,
+  "lastSeen": "2026-11-10"
+ },
+ "10000002865970": {
+  "mapName": "苍井食堂-前厅通岗",
+  "categoryName": "新手村",
+  "status": 1,
+  "lastEmpCount": 14,
+  "lastSeen": "2026-11-10"
  }
 }
