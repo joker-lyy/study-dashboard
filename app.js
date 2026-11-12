@@ -2274,7 +2274,78 @@ function renderDirect() {
         <div class="card"><div class="k">汇总进度</div><div class="v" style="color:${dRateCol(sRateAll)}">${sRateAll.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${sD} / ${sT} 项（任务+地图）</div></div>
       </div>
       <div class="cards" style="margin-top:10px">${storeCards}</div>
+      ${directMapSec()}
     </div>`;
+}
+/* ---------- 苍井食堂 · 学习地图学习情况（11/12）：6 张地图逐张汇总，点行看每位伙伴进度 ---------- */
+// 聚合：{mapName: {learners:[{eid,P,prog,status}], avg, doneCnt, tDone, tTotal}}
+function directMapAgg() {
+  const idx = directIndex();
+  const agg = {};
+  idx.emps.forEach(eid => {
+    const P = idx.prof[eid];
+    (P.maps || []).forEach(m => {
+      const nm = m.mapName || "未命名地图";
+      const a = agg[nm] = agg[nm] || { learners: [], tDone: 0, tTotal: 0 };
+      const prog = parseFloat(m.progress) || 0;
+      a.learners.push({ eid, P, prog, status: m.status, stageName: m.stageName || "" });
+      (m.stages || []).forEach(sg => (sg.tasks || []).forEach(tk => { a.tTotal++; if (String(tk.status) === "3") a.tDone++; }));
+    });
+  });
+  Object.values(agg).forEach(a => {
+    a.learners.sort((x, y) => y.prog - x.prog);
+    a.avg = a.learners.length ? a.learners.reduce((s, l) => s + l.prog, 0) / a.learners.length : 0;
+    a.doneCnt = a.learners.filter(l => l.prog >= 100).length;
+  });
+  return Object.entries(agg).sort((x, y) => y[1].learners.length - x[1].learners.length);
+}
+function directMapSec() {
+  const agg = directMapAgg();
+  if (!Object.keys(agg).length) return "";
+  const rows = agg.map(([nm, a]) => `<tr style="cursor:pointer" onclick="openDirectMap('${esc(nm).replace(/'/g, "\\'")}')">
+      <td><b>${esc(nm)}</b></td>
+      <td>${a.learners.length}<small> 人</small></td>
+      <td>${dBar(a.avg)}</td>
+      <td><span style="color:${a.doneCnt ? "#1aad19" : "var(--t2)"};font-weight:600">${a.doneCnt}</span><span style="color:var(--t2)"> / ${a.learners.length}</span></td>
+      <td>${dBar(a.tTotal ? a.tDone / a.tTotal * 100 : null)} <span style="color:var(--t2);font-size:12px">${a.tDone}/${a.tTotal}</span></td>
+      <td><span style="color:#186BEB">明细 ›</span></td></tr>`).join("");
+  return `
+    <h3 style="margin-top:22px">苍井食堂 · 学习地图学习情况 <span class="badge b-blue">${agg.length} 张地图</span></h3>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">直营伙伴在学的全部学习地图逐张汇总 · 平均进度/已完成按伙伴维度（进度≥100% 计完成）· 地图任务完成=已完成任务/总任务 · 不受时段筛选，恒为全部 · 点击行看每位伙伴的进度明细</div>
+    <table>
+      <tr><th>学习地图</th><th>在学人数</th><th>平均进度</th><th>已完成人数</th><th>地图任务完成</th><th></th></tr>
+      ${rows}
+    </table>`;
+}
+function openDirectMap(nm) {
+  state.dMapName = nm;
+  window.__directBack = "direct";
+  document.getElementById("mTitle").textContent = "苍井食堂 · " + nm + " · 伙伴进度";
+  renderDirectMapModal();
+  document.getElementById("mask").classList.add("show");
+}
+function renderDirectMapModal() {
+  const idx = directIndex();
+  const a = (directMapAgg().find(([n]) => n === state.dMapName) || [null, null])[1];
+  if (!a) { document.getElementById("mBody").innerHTML = `<div class="empty">无数据</div>`; return; }
+  const rows = a.learners.map(l => {
+    const st = l.P.empStatus === "zc" ? `<span class="badge b-green">在职</span>` : `<span class="badge b-gray">离职</span>`;
+    return `<tr style="cursor:pointer" onclick="openDirectEmp('${l.eid}')">
+      <td><b>${esc(l.P.name)}</b></td><td>${esc(l.P.store || "—")}</td><td>${esc(l.P.position || "—")}</td>
+      <td>${dBar(l.prog)}</td>
+      <td>${esc(l.stageName || "—")}</td>
+      <td>${st}</td>
+      <td><span style="color:#186BEB">档案 ›</span></td></tr>`;
+  }).join("");
+  document.getElementById("mBody").innerHTML = `
+    <div class="filters">
+      <span style="font-size:12px;color:var(--t2)">共 ${a.learners.length} 人在学 · 平均进度 ${a.avg.toFixed(1)}% · 已完成 ${a.doneCnt} 人 · 点击行查看伙伴学习档案</span>
+      <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:auto" onclick="sharePng('modal')">🖼 图片</button>
+    </div>
+    <table>
+      <tr><th>姓名</th><th>门店</th><th>岗位</th><th>地图进度</th><th>当前阶段</th><th>状态</th><th></th></tr>
+      ${rows}
+    </table>`;
 }
 /* 门店弹窗：该店伙伴列表 + 岗位/状态筛选 */
 function directSetPos(v) { state.dPos = v; renderDirectStoreModal(); }
