@@ -2274,10 +2274,68 @@ function renderDirect() {
         <div class="card"><div class="k">汇总进度</div><div class="v" style="color:${dRateCol(sRateAll)}">${sRateAll.toFixed(1)}<small>%</small></div><div style="font-size:12px;color:var(--t2);margin-top:4px">${sD} / ${sT} 项（任务+地图）</div></div>
       </div>
       <div class="cards" style="margin-top:10px">${storeCards}</div>
+      ${tongGangSec()}
       ${directMapSec()}
     </div>`;
 }
-/* ---------- 苍井食堂 · 学习地图学习情况（11/12）：6 张地图逐张汇总，点行看每位伙伴进度 ---------- */
+/* ---------- 苍井食堂 · 通岗学习地图（11/12）：后厨通岗/前厅通岗两张地图，员工学习情况 ---------- */
+function tongGangAgg() {
+  const ms = (DATA.maps || []).filter(m => /苍井食堂/.test(m.mapName || ""));
+  return ms.map(m => {
+    const learners = (m.emps || []).map(e => ({
+      name: e.employeeName || "", store: e.storeName || "", position: (Array.isArray(e.roleNames) ? e.roleNames.join("/") : e.roleNames) || "",
+      prog: parseFloat(e.completionSchedule) || 0, status: e.status
+    })).sort((x, y) => y.prog - x.prog);
+    const avg = learners.length ? learners.reduce((s, l) => s + l.prog, 0) / learners.length : 0;
+    const doneCnt = learners.filter(l => l.prog >= 100).length;
+    return { mapName: m.mapName, learners, avg, doneCnt };
+  }).sort((x, y) => y.learners.length - x.learners.length);
+}
+function tongGangSec() {
+  const agg = tongGangAgg();
+  if (!agg.length) return "";
+  const rows = agg.map(a => `<tr style="cursor:pointer" onclick="openTongGang('${esc(a.mapName).replace(/'/g, "\\'")}')">
+      <td><b>${esc(a.mapName)}</b></td>
+      <td>${a.learners.length}<small> 人</small></td>
+      <td>${dBar(a.avg)}</td>
+      <td><span style="color:${a.doneCnt ? "#1aad19" : "var(--t2)"};font-weight:600">${a.doneCnt}</span><span style="color:var(--t2)"> / ${a.learners.length}</span></td>
+      <td><span style="color:#186BEB">明细 ›</span></td></tr>`).join("");
+  return `
+    <h3 style="margin-top:22px">苍井食堂 · 通岗学习地图学习情况 <span class="badge b-blue">${agg.length} 张地图</span></h3>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">苍井食堂员工的通岗学习地图（后厨通岗/前厅通岗）学习情况 · 平均进度/已完成按员工维度（进度≥100% 计完成）· 不受时段筛选，恒为全部 · 点击行看每位员工的学习进度</div>
+    <table>
+      <tr><th>学习地图</th><th>在学人数</th><th>平均进度</th><th>已完成人数</th><th></th></tr>
+      ${rows}
+    </table>`;
+}
+function openTongGang(nm) {
+  state.tgName = nm;
+  window.__directBack = "direct";
+  document.getElementById("mTitle").textContent = "苍井食堂 · " + nm + " · 员工学习进度";
+  renderTongGangModal();
+  document.getElementById("mask").classList.add("show");
+}
+function renderTongGangModal() {
+  const a = tongGangAgg().find(x => x.mapName === state.tgName);
+  if (!a) { document.getElementById("mBody").innerHTML = `<div class="empty">无数据</div>`; return; }
+  const rows = a.learners.map(l => {
+    const st = l.status === 1 ? `<span class="badge b-green">已完成</span>` : `<span class="badge b-blue">学习中</span>`;
+    return `<tr>
+      <td><b>${esc(l.name)}</b></td><td>${esc(l.store || "—")}</td><td>${esc(l.position || "—")}</td>
+      <td>${dBar(l.prog)}</td>
+      <td>${st}</td></tr>`;
+  }).join("");
+  document.getElementById("mBody").innerHTML = `
+    <div class="filters">
+      <span style="font-size:12px;color:var(--t2)">共 ${a.learners.length} 人在学 · 平均进度 ${a.avg.toFixed(1)}% · 已完成 ${a.doneCnt} 人</span>
+      <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:auto" onclick="sharePng('modal')">🖼 图片</button>
+    </div>
+    <table>
+      <tr><th>姓名</th><th>门店</th><th>岗位</th><th>地图进度</th><th>状态</th></tr>
+      ${rows}
+    </table>`;
+}
+/* ---------- 苍井寿司 · 各职位学习地图汇总（11/12）：直营伙伴职位地图逐张汇总，点行看每位伙伴进度 ---------- */
 // 聚合：{mapName: {learners:[{eid,P,prog,status}], avg, doneCnt, tDone, tTotal}}
 function directMapAgg() {
   const idx = directIndex();
@@ -2310,8 +2368,8 @@ function directMapSec() {
       <td>${dBar(a.tTotal ? a.tDone / a.tTotal * 100 : null)} <span style="color:var(--t2);font-size:12px">${a.tDone}/${a.tTotal}</span></td>
       <td><span style="color:#186BEB">明细 ›</span></td></tr>`).join("");
   return `
-    <h3 style="margin-top:22px">苍井食堂 · 学习地图学习情况 <span class="badge b-blue">${agg.length} 张地图</span></h3>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">直营伙伴在学的全部学习地图逐张汇总 · 平均进度/已完成按伙伴维度（进度≥100% 计完成）· 地图任务完成=已完成任务/总任务 · 不受时段筛选，恒为全部 · 点击行看每位伙伴的进度明细</div>
+    <h3 style="margin-top:22px">苍井寿司 · 各职位学习地图汇总 <span class="badge b-blue">${agg.length} 张地图</span></h3>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">直营伙伴在学的各职位学习地图逐张汇总 · 平均进度/已完成按伙伴维度（进度≥100% 计完成）· 地图任务完成=已完成任务/总任务 · 不受时段筛选，恒为全部 · 点击行看每位伙伴的进度明细</div>
     <table>
       <tr><th>学习地图</th><th>在学人数</th><th>平均进度</th><th>已完成人数</th><th>地图任务完成</th><th></th></tr>
       ${rows}
@@ -2320,7 +2378,7 @@ function directMapSec() {
 function openDirectMap(nm) {
   state.dMapName = nm;
   window.__directBack = "direct";
-  document.getElementById("mTitle").textContent = "苍井食堂 · " + nm + " · 伙伴进度";
+  document.getElementById("mTitle").textContent = "苍井寿司 · " + nm + " · 伙伴进度";
   renderDirectMapModal();
   document.getElementById("mask").classList.add("show");
 }
