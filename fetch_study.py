@@ -644,6 +644,65 @@ def is_direct_emp(e):
     store = e.get("storeNames") or e.get("storeName") or ""
     return "培训组" in org and "直营组" in org and "测试" not in store
 
+def fetch_tonggang_maps(tok, maps):
+    """苍井食堂通岗地图（后厨通岗/前厅通岗）员工三级明细（2026-11-12 新增「学习内容明细」数据源）：
+    结构与 directMaps 同构：data["tongMaps"] = {"emps": {"<employeeId>":
+        {"name/store/position/maps":[{"mapId","mapName","progress","status","stages":[{"stageName","status","tasks":[...]}]}]}}}
+    通岗员工不经过 is_direct_emp 过滤（苍井食堂店员不属于直营组，全部纳入）。"""
+    pairs, seen = [], set()
+    for mp in maps:
+        if "苍井食堂" not in (mp.get("mapName") or ""):
+            continue
+        for e in mp.get("emps") or []:
+            key = (e["employeeId"], mp["mapId"])
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append((e, mp))
+    print(f"[通岗明细] 苍井食堂员工-地图对: {len(pairs)} 对")
+    wide = {"startDate": "2020-01-01", "endDate": "2029-12-31"}
+
+    def fetch_pair(item):
+        e, mp = item
+        eid, mid = e["employeeId"], mp["mapId"]
+        rec = {"mapId": mid, "mapName": mp.get("mapName"),
+               "progress": e.get("completionSchedule"), "status": e.get("status"),
+               "stageName": e.get("stageName"), "learningPeriod": e.get("learningPeriod"),
+               "issueDate": e.get("issueDate"), "stages": []}
+        d, err = call(tok, "/web/reportForm/learnStatisticsEmployeeMapDetails?version=1",
+                      {"mapId": mid, "employeeId": eid, **wide})
+        if d:
+            rec["summary"] = d
+        d, err = call(tok, "/web/reportForm/learnStatisticsEmployeeStageMapDetails?version=1",
+                      {"mapId": mid, "employeeId": eid, **wide})
+        stages = d if isinstance(d, list) else []
+        for st in stages:
+            sd, serr = call(tok, "/web/reportForm/learnStatisticsEmployeeStageTaskMapDetails?version=1",
+                            {"mapId": mid, "employeeId": eid, "stageId": st.get("stageId"), **wide})
+            rec["stages"].append({
+                "stageId": st.get("stageId"), "stageName": st.get("stageName"),
+                "status": st.get("status"), "finishCond": st.get("finishCond"),
+                "tasks": sd if isinstance(sd, list) else [],
+            })
+        if not stages:
+            rec["fetchErr"] = err
+        return (eid, e, rec)
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=MAP_WORKERS) as ex:
+        for eid, e, rec in ex.map(fetch_pair, pairs):
+            roles = e.get("roleNames")
+            if str(eid) not in results:
+                results[str(eid)] = {
+                    "name": e.get("employeeName"),
+                    "store": e.get("storeName") or "",
+                    "position": ("/".join(roles) if isinstance(roles, list) else (roles or "")),
+                    "maps": []}
+            results[str(eid)]["maps"].append(rec)
+    total_maps = sum(len(v["maps"]) for v in results.values())
+    print(f"[通岗明细] 完成: {len(results)} 人 / {total_maps} 张地图对（请求对 {len(pairs)}）")
+    return {"emps": results}
+
 def fetch_direct_maps(tok, maps):
     """直营组学习地图三级明细（2026-09-19 新增「直营学习明细」板块数据源）：
     对直营组员工 × 其参与的每张地图，抓
@@ -955,6 +1014,7 @@ def main():
     ev, cs = fetch_evaluations()
     maps = fetch_maps(tok)
     direct = fetch_direct_maps(tok, maps)
+    tong = fetch_tonggang_maps(tok, maps)
     pc = fetch_public_courses(tok)
     fetch_public_course_emps(tok, pc)  # 静态明细文件（公共链接降级用）
     data = {"generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -964,6 +1024,7 @@ def main():
             "resigned": fetch_resigned(tok),
             "maps": maps,
             "directMaps": direct,
+            "tongMaps": tong,
             "publicCourses": pc,
             "categories": list(dict.fromkeys([c for c, _ in CATEGORY_RULES] + [k for k in cats if k not in [x for x, _ in CATEGORY_RULES]])),
             "plans": []}

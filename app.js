@@ -2283,13 +2283,20 @@ function tongGangAgg() {
   const ms = (DATA.maps || []).filter(m => /苍井食堂/.test(m.mapName || ""));
   return ms.map(m => {
     const learners = (m.emps || []).map(e => ({
-      name: e.employeeName || "", store: e.storeName || "", position: (Array.isArray(e.roleNames) ? e.roleNames.join("/") : e.roleNames) || "",
+      eid: String(e.employeeId), name: e.employeeName || "", store: e.storeName || "", position: (Array.isArray(e.roleNames) ? e.roleNames.join("/") : e.roleNames) || "",
       prog: parseFloat(e.completionSchedule) || 0, status: e.status
     })).sort((x, y) => y.prog - x.prog);
     const avg = learners.length ? learners.reduce((s, l) => s + l.prog, 0) / learners.length : 0;
     const doneCnt = learners.filter(l => l.prog >= 100).length;
-    return { mapName: m.mapName, learners, avg, doneCnt };
+    return { mapId: m.mapId, mapName: m.mapName, learners, avg, doneCnt };
   }).sort((x, y) => y.learners.length - x.learners.length);
+}
+function tongEmpRec(eid) {
+  const emps = (DATA.tongMaps || {}).emps || {};
+  const E = emps[String(eid)];
+  if (!E) return null;
+  const rec = (E.maps || []).find(m => m.mapName === state.tgName) || E.maps[0];
+  return rec ? { E, rec } : null;
 }
 function tongGangSec() {
   const agg = tongGangAgg();
@@ -2320,20 +2327,67 @@ function renderTongGangModal() {
   if (!a) { document.getElementById("mBody").innerHTML = `<div class="empty">无数据</div>`; return; }
   const rows = a.learners.map(l => {
     const st = l.status === 1 ? `<span class="badge b-green">已完成</span>` : `<span class="badge b-blue">学习中</span>`;
-    return `<tr>
+    return `<tr style="cursor:pointer" onclick="openTongGangEmp('${l.eid}')" title="点击查看学习内容明细">
       <td><b>${esc(l.name)}</b></td><td>${esc(l.store || "—")}</td><td>${esc(l.position || "—")}</td>
       <td>${dBar(l.prog)}</td>
-      <td>${st}</td></tr>`;
+      <td>${st}</td>
+      <td><span style="color:#186BEB">明细 ›</span></td></tr>`;
   }).join("");
   document.getElementById("mBody").innerHTML = `
     <div class="filters">
-      <span style="font-size:12px;color:var(--t2)">共 ${a.learners.length} 人在学 · 平均进度 ${a.avg.toFixed(1)}% · 已完成 ${a.doneCnt} 人</span>
+      <span style="font-size:12px;color:var(--t2)">共 ${a.learners.length} 人在学 · 平均进度 ${a.avg.toFixed(1)}% · 已完成 ${a.doneCnt} 人 · 点击行查看学习内容明细</span>
       <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:auto" onclick="sharePng('modal')">🖼 图片</button>
     </div>
     <table>
-      <tr><th>姓名</th><th>门店</th><th>岗位</th><th>地图进度</th><th>状态</th></tr>
+      <tr><th>姓名</th><th>门店</th><th>岗位</th><th>地图进度</th><th>状态</th><th></th></tr>
       ${rows}
     </table>`;
+}
+function openTongGangEmp(eid) {
+  state.tgEmp = String(eid);
+  window.__tgBack = "map";
+  const x = tongEmpRec(eid);
+  const E = (x || {}).E || {};
+  document.getElementById("mTitle").textContent = (E.name || "") + " · " + (state.tgName || "") + " · 学习内容明细";
+  renderTongGangEmpModal();
+  document.getElementById("mask").classList.add("show");
+}
+function renderTongGangEmpModal() {
+  const x = tongEmpRec(state.tgEmp);
+  if (!x) { document.getElementById("mBody").innerHTML = `<div class="empty">暂无该员工的学习明细数据（本轮抓取未包含，等下一轮刷新后可见）</div>`; return; }
+  const { E, rec } = x;
+  const prog = parseFloat(rec.progress) || 0;
+  const back = `<button class="btn" style="padding:6px 12px;font-size:12px;background:var(--navy)" onclick="openTongGang('${esc(state.tgName).replace(/'/g, "\\'")}')">← 返回地图</button>`;
+  // 逐阶段：任务表（阶段/任务/类型/状态/分数/完成时间），口径同直营学习档案地图部分
+  const stageBlocks = (rec.stages || []).map(st => {
+    const rows = (st.tasks || []).map(tk => {
+      const done = String(tk.status) === "3";
+      return `<tr>
+        <td style="color:var(--t2);font-size:12px;white-space:nowrap">${esc(st.stageName || "")}</td>
+        <td>${esc(tk.taskName || "")}</td>
+        <td>${esc(dMapTypeName(tk.taskType))}</td>
+        <td>${done ? `<span style="color:#1aad19;font-weight:600">已完成</span>` : String(tk.status) === "2" ? `<span style="color:#e69119;font-weight:600">进行中</span>` : `<span style="color:#e64340;font-weight:600">未开始</span>`}</td>
+        <td>${tk.realScore != null && tk.realScore !== "-" ? esc(String(tk.realScore)) : "—"}</td>
+        <td style="color:var(--t2);font-size:12px;white-space:nowrap">${tk.finishTime && tk.finishTime !== "-" ? esc(String(tk.finishTime).slice(0, 16)) : "—"}</td>
+      </tr>`;
+    }).join("");
+    const tDone = (st.tasks || []).filter(tk => String(tk.status) === "3").length;
+    const head = `<tr><th>阶段</th><th>任务</th><th>类型</th><th>状态</th><th>分数</th><th>完成时间</th></tr>`;
+    const openAttr = tDone < (st.tasks || []).length ? " open" : "";
+    return `<details${openAttr} style="margin-bottom:8px">
+      <summary style="cursor:pointer;font-weight:600;padding:6px 0">${esc(st.stageName || "阶段")} <span style="float:right;font-size:12px;color:var(--t2)">${tDone}/${(st.tasks || []).length} 项 ${dBar((st.tasks || []).length ? tDone / st.tasks.length * 100 : 0)}</span></summary>
+      <div style="overflow:auto"><table>${head}${rows}</table></div>
+    </details>`;
+  }).join("");
+  const summary = rec.summary || {};
+  const sumCards = ["learningPeriod", "finishCond"].map(k => summary[k] ? `<div class="card" style="min-width:150px"><div class="k" style="font-size:12px">${k === "learningPeriod" ? "学习期限" : "结业条件"}</div><div style="font-size:14px;font-weight:600">${esc(String(summary[k]))}</div></div>` : "").join("");
+  document.getElementById("mBody").innerHTML = `
+    <div class="filters">${back}
+      <span style="font-size:12px;color:var(--t2)">地图进度 ${prog.toFixed(1)}% · 当前阶段 ${esc(rec.stageName || "—")} · ${esc(E.store || "")}</span>
+      <button class="btn" style="padding:5px 14px;font-size:12px;margin-left:auto" onclick="sharePng('modal')">🖼 图片</button>
+    </div>
+    ${sumCards ? `<div class="summary-sec" style="margin-bottom:10px">${sumCards}</div>` : ""}
+    ${stageBlocks || `<div class="empty">该员工暂无阶段任务明细（可能尚未开始学习）</div>`}`;
 }
 /* ---------- 苍井寿司 · 各职位学习地图汇总（11/12）：直营伙伴职位地图逐张汇总，点行看每位伙伴进度 ---------- */
 // 聚合：{mapName: {learners:[{eid,P,prog,status}], avg, doneCnt, tDone, tTotal}}
