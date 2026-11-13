@@ -2354,7 +2354,6 @@ function tongGangSec() {
       <td><span style="color:#186BEB">明细 ›</span></td></tr>`).join("");
   return `
     <h3 style="margin-top:22px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">苍井食堂 · 通岗学习地图学习情况 <span class="badge b-blue">${agg.length} 张地图</span><button class="btn tgShareBtn" style="margin-left:auto;padding:6px 14px;font-size:12px" onclick="openShareOverlay('tonggang')">🔗 分享链接（只看本板块）</button></h3>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">苍井食堂员工的通岗学习地图（后厨通岗/前厅通岗）学习情况 · 平均进度/已完成按员工维度（进度≥100% 计完成）· 不受时段筛选，恒为全部 · 点击行看每位员工的学习进度</div>
     <table>
       <tr><th>学习地图</th><th>在学人数</th><th>平均进度</th><th>已完成人数</th><th></th></tr>
       ${rows}
@@ -2371,7 +2370,8 @@ function renderTongGangModal() {
   const a = tongGangAgg().find(x => x.mapName === state.tgName);
   if (!a) { document.getElementById("mBody").innerHTML = `<div class="empty">无数据</div>`; return; }
   const rows = a.learners.map(l => {
-    const st = l.status === 1 ? `<span class="badge b-green">已完成</span>` : `<span class="badge b-blue">学习中</span>`;
+    // 状态按进度判定（11/13 用户纠正）：100%=已完成，>0%=进行中，0%=未开始（平台 status 口径不符）
+    const st = l.prog >= 100 ? `<span class="badge b-green">已完成</span>` : l.prog > 0 ? `<span class="badge b-orange">进行中</span>` : `<span class="badge b-gray">未开始</span>`;
     return `<tr style="cursor:pointer" onclick="openTongGangEmp('${l.eid}')" title="点击查看学习内容明细">
       <td><b>${esc(l.name)}</b></td><td>${esc(l.store || "—")}</td><td>${esc(l.position || "—")}</td>
       <td>${dBar(l.prog)}</td>
