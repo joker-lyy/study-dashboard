@@ -2293,6 +2293,10 @@ function renderDirect() {
       <div style="font-size:12px;color:var(--t2)">地图进度 ${dBar(x.ma)}</div>
       <div style="font-size:12px;color:var(--t2)">汇总进度 ${dBar(x.sr)}</div>
     </div>`).join("");
+  if (state.__tgSolo) { /* 独立分享单页：只渲染通岗板块 */
+    el.innerHTML = tongGangSec() || `<div class="sec empty">暂无通岗地图数据</div>`;
+    return;
+  }
   el.innerHTML = `
     <div class="sec">
       <h3>直营学习明细（培训组-直营组）<button class="btn directShareBtn" style="margin-left:auto;padding:6px 14px;font-size:12px" onclick="openShareOverlay('direct')">🔗 分享本页（门店自查链接）</button></h3>
@@ -2349,7 +2353,7 @@ function tongGangSec() {
       <td><span style="color:${a.doneCnt ? "#1aad19" : "var(--t2)"};font-weight:600">${a.doneCnt}</span><span style="color:var(--t2)"> / ${a.learners.length}</span></td>
       <td><span style="color:#186BEB">明细 ›</span></td></tr>`).join("");
   return `
-    <h3 style="margin-top:22px">苍井食堂 · 通岗学习地图学习情况 <span class="badge b-blue">${agg.length} 张地图</span></h3>
+    <h3 style="margin-top:22px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">苍井食堂 · 通岗学习地图学习情况 <span class="badge b-blue">${agg.length} 张地图</span><button class="btn tgShareBtn" style="margin-left:auto;padding:6px 14px;font-size:12px" onclick="openShareOverlay('tonggang')">🔗 分享链接（只看本板块）</button></h3>
     <div style="font-size:12px;color:var(--t2);margin-bottom:8px">苍井食堂员工的通岗学习地图（后厨通岗/前厅通岗）学习情况 · 平均进度/已完成按员工维度（进度≥100% 计完成）· 不受时段筛选，恒为全部 · 点击行看每位员工的学习进度</div>
     <table>
       <tr><th>学习地图</th><th>在学人数</th><th>平均进度</th><th>已完成人数</th><th></th></tr>
@@ -2803,6 +2807,9 @@ window.openShareOverlay = function(mod){
   } else if (mod === "direct") {
     // 直营学习明细独立单页：打开只见这一页，页内钻取/筛选可用，数据随看板自动同步
     st = shareSnap(); st.tab = "直营学习明细"; st.solo = "direct";
+  } else if (mod === "tonggang") {
+    // 苍井食堂通岗板块独立单页：打开只见通岗板块，页内钻取可用，数据随看板自动同步
+    st = shareSnap(); st.tab = "直营学习明细"; st.solo = "tonggang";
   } else {
     st = shareSnap();
   }
@@ -2818,6 +2825,7 @@ window.openShareOverlay = function(mod){
   const isModal = !!st.m;
   const hint = isModal ? "对方打开后仅看到这个弹窗的学习明细（只读）"
     : st.solo === "direct" ? "对方打开后只看到「直营学习明细」单页，可点击门店/伙伴逐层查询，数据随看板自动更新"
+    : st.solo === "tonggang" ? "对方打开后只看到「苍井食堂 · 通岗学习地图学习情况」板块，可点击查看每位员工的学习内容明细，数据随看板自动更新"
     : "对方打开后直接落到当前页签/筛选的视图";
   ov.innerHTML = `
     <div style="background:#fff;border-radius:12px;max-width:560px;width:100%;padding:18px 20px" onclick="event.stopPropagation()">
@@ -2871,13 +2879,14 @@ function applyShareView(){
     }
     document.body.classList.add("share-solo");
   }
-  // 独立单页分享（直营学习明细）：隐藏顶栏/页签/二级条，只留这一页，页内钻取全部可用
-  if (o.solo === "direct") {
+  // 独立单页分享（直营学习明细 / 苍井食堂通岗板块）：隐藏顶栏/页签/二级条，只留这一页，页内钻取全部可用
+  if (o.solo === "direct" || o.solo === "tonggang") {
     state.tab = "直营学习明细";
+    state.__tgSolo = o.solo === "tonggang";
     if (!document.getElementById("shareSoloPageStyle")) {
       const st3 = document.createElement("style");
       st3.id = "shareSoloPageStyle";
-      st3.textContent = "body.share-solo-page>header,body.share-solo-page #mainTabs,body.share-solo-page #promoBar,body.share-solo-page .directShareBtn{display:none!important}body.share-solo-page #main{padding-top:22px}";
+      st3.textContent = "body.share-solo-page>header,body.share-solo-page #mainTabs,body.share-solo-page #promoBar,body.share-solo-page .directShareBtn,body.share-solo-page .tgShareBtn{display:none!important}body.share-solo-page #main{padding-top:22px}";
       document.head.appendChild(st3);
     }
     document.body.classList.add("share-solo-page");
@@ -2888,7 +2897,7 @@ function applyShareView(){
           const d = await (await fetch("data/data.json")).json(); // fix235: 走 ETag 304，未变不重下
           if (d.generatedAt !== DATA.generatedAt) { DATA = d; window.__directIdx = null; render(); }
         } catch (e) {}
-      }, 5 * 60 * 1000);
+      }, 60 * 1000);
     }
   }
   render();
