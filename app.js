@@ -591,7 +591,9 @@ function renderOverview() {
     }));
     // 完成率 = 必修课+考核口径（empStat 内已统一，2026-09-18），无明细回退人数口径
     const rate = hasT && tT ? tD / tT * 100 : (emps ? done / emps * 100 : 0);
-    const latest = plans.slice(0, 5).map(p => {
+    const favs = planFavGet(cat);
+    const list = favs.length ? plans.filter(p => favs.includes(p.planName)) : plans.slice(0, 5);
+    const latest = list.map(p => {
       // 整体完成率与卡片同口径：任务进度优先（平台字段为0时兜底）
       let t = 0, d2 = 0;
       (p.emps || []).forEach(e => { const s = empStat(p, e); if (s) { t += s.total; d2 += s.done; } });
@@ -602,7 +604,7 @@ function renderOverview() {
       return `<tr><td>${esc(p.planName)}</td><td>${p.startDate || "-"}</td><td>${ovRate}</td></tr>`;
     }).join("") || `<tr><td colspan=3 class=empty>暂无计划</td></tr>`;
     return `<div class="sec">
-      <h3>${cat === "线上线下培训" ? "学习任务" : cat} <span class="badge b-blue">${plans.length} 个计划</span></h3>
+      <h3>${cat === "线上线下培训" ? "学习任务" : cat} <span class="badge b-blue">${plans.length} 个计划</span><button class="btn" style="padding:4px 10px;font-size:12px;margin-left:8px" onclick="catPlanManage('${cat}')">⚙ 管理关注</button></h3>
       <div class="cards">
         <div class="card"><div class="k">学员总数</div><div class="v">${emps}</div></div>
         <div class="card"><div class="k">已完成</div><div class="v">${done}</div></div>
@@ -617,6 +619,50 @@ function renderOverview() {
     </div>`;
   el.innerHTML = `<div class="summary-sec">${catCards}${pcSec}</div>`;
   pcDashRender();
+}
+
+/* ---------- 概述 · 各分类卡「管理关注」（11/13 Rain：勾选卡片里展示哪些计划） ---------- */
+/* 勾选存 localStorage（planFavIds: {分类:[计划名…]}），只影响本浏览器；不勾=默认显示最近 5 个计划 */
+function planFavAll() {
+  try { return JSON.parse(localStorage.getItem("planFavIds") || "{}") || {}; } catch (e) { return {}; }
+}
+function planFavGet(cat) { return planFavAll()[cat] || []; }
+function planFavSet(cat, names) {
+  const all = planFavAll();
+  if (names.length) all[cat] = names; else delete all[cat];
+  try { localStorage.setItem("planFavIds", JSON.stringify(all)); } catch (e) {}
+}
+function catPlanManage(cat) {
+  const favs = planFavGet(cat);
+  const plans = plansInRange(cat).slice();
+  const old = document.getElementById("planFavDlg"); if (old) old.remove();
+  const ov = document.createElement("div");
+  ov.id = "planFavDlg";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center";
+  const rows = plans.map(p => `<label style="display:flex;gap:8px;align-items:center;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--line)">
+      <input type="checkbox" data-pn="${esc(p.planName)}" ${favs.includes(p.planName) ? "checked" : ""}>
+      <span style="flex:1">${esc(p.planName)}</span>
+      <span style="color:var(--t2);font-size:12px;white-space:nowrap">${p.startDate || "-"}</span></label>`).join("")
+    || `<div class="empty">暂无计划</div>`;
+  ov.innerHTML = `<div style="background:var(--card);color:var(--t1);border-radius:14px;max-width:520px;width:92%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)" onclick="event.stopPropagation()">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <b>管理关注的计划 · ${esc(cat === "线上线下培训" ? "学习任务" : cat)}</b>
+      <div style="display:flex;gap:8px">
+        <button class="btn" style="padding:5px 12px;font-size:12px" onclick="planFavSave('${cat}')">保存</button>
+        <button class="btn" style="padding:5px 12px;font-size:12px" onclick="document.getElementById('planFavDlg').remove()">取消</button>
+      </div>
+    </div>
+    <div style="overflow:auto;padding:8px 18px;font-size:13px">${rows}</div>
+    <div style="padding:8px 18px 12px;font-size:11px;color:var(--t2)">勾选保存后，卡片「最近计划」表只显示所选计划（按开始日期降序）；全部不勾 = 默认显示最近 5 个。选择保存在本浏览器。</div>
+  </div>`;
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+function planFavSave(cat) {
+  const dlg = document.getElementById("planFavDlg"); if (!dlg) return;
+  const names = [...dlg.querySelectorAll("input[data-pn]")].filter(cb => cb.checked).map(cb => cb.getAttribute("data-pn"));
+  planFavSet(cat, names);
+  dlg.remove(); renderOverview();
 }
 
 /* ---------- 概述 · 课程学习情况卡（11/3 Rain：勾选关注的公开课在概述页展示） ---------- */
