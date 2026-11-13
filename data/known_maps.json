@@ -82,5 +82,33 @@
   "status": 1,
   "lastEmpCount": 10,
   "lastSeen": "2026-11-13"
+ },
+ "10000002987005": {
+  "mapName": "苍井食堂-后厨工作",
+  "categoryName": "新手村",
+  "status": 1,
+  "lastEmpCount": 6,
+  "lastSeen": "2026-11-13"
+ },
+ "10000002987547": {
+  "mapName": "苍井食堂-后厨备货",
+  "categoryName": "新手村",
+  "status": 1,
+  "lastEmpCount": 6,
+  "lastSeen": "2026-11-13"
+ },
+ "10000002987654": {
+  "mapName": "苍井食堂-后厨操作台冰箱定位",
+  "categoryName": "新手村",
+  "status": 1,
+  "lastEmpCount": 6,
+  "lastSeen": "2026-11-13"
+ },
+ "10000002988040": {
+  "mapName": "苍井食堂-后厨产品制作",
+  "categoryName": "新手村",
+  "status": 1,
+  "lastEmpCount": 6,
+  "lastSeen": "2026-11-13"
  }
 }
