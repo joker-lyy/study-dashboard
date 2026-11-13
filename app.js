@@ -579,9 +579,7 @@ function empStat(p, e) {
 /* ---------- 概述 ---------- */
 function renderOverview() {
   const el = document.getElementById("main");
-  const hiddenCats = catHiddenGet();
-  const shownCats = CORE_CATS.filter(cat => !hiddenCats.includes(cat));
-  const catCards = shownCats.map(cat => {
+  const catCards = CORE_CATS.map(cat => {
     const plans = plansInRange(cat);
     let emps = 0, done = 0, tT = 0, tD = 0, hasT = false;
     plans.forEach(p => statEmpsOf(p).forEach(e => {
@@ -617,47 +615,8 @@ function renderOverview() {
       <h3>课程学习情况 <span id="pcFavCnt" class="badge b-blue"></span><button class="btn" style="padding:4px 10px;font-size:12px;margin-left:8px" onclick="pcDashManage()">⚙ 管理关注</button></h3>
       <div id="pcDashCards"></div>
     </div>`;
-  const allHiddenHint = !shownCats.length ? `<div class="sec"><div style="color:var(--t2);font-size:13px;padding:8px 0">培训卡片已全部隐藏，点上方「⚙ 管理关注卡片」重新勾选恢复。</div></div>` : "";
-  el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn" style="padding:5px 12px;font-size:12px" onclick="catCardManage()">⚙ 管理关注卡片</button></div>
-    <div class="summary-sec">${allHiddenHint}${catCards}${pcSec}</div>`;
+  el.innerHTML = `<div class="summary-sec">${catCards}${pcSec}</div>`;
   pcDashRender();
-}
-
-/* ---------- 概述 · 培训卡片管理关注（11/12 Rain：自选显示哪些分类卡） ---------- */
-/* 勾选存 localStorage（catHiddenIds，存被隐藏的分类），只影响本浏览器；全不勾=全部显示 */
-function catHiddenGet() {
-  try { return JSON.parse(localStorage.getItem("catHiddenIds") || "[]") || []; } catch (e) { return []; }
-}
-function catHiddenSet(a) { try { localStorage.setItem("catHiddenIds", JSON.stringify(a)); } catch (e) {} }
-function catCardManage() {
-  const hidden = catHiddenGet();
-  const old = document.getElementById("catFavDlg"); if (old) old.remove();
-  const ov = document.createElement("div");
-  ov.id = "catFavDlg";
-  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center";
-  ov.innerHTML = `<div style="background:var(--card);color:var(--t1);border-radius:14px;max-width:480px;width:92%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)" onclick="event.stopPropagation()">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
-      <b>管理关注卡片</b>
-      <div style="display:flex;gap:8px">
-        <button class="btn" style="padding:5px 12px;font-size:12px" onclick="catFavSave()">保存</button>
-        <button class="btn" style="padding:5px 12px;font-size:12px" onclick="document.getElementById('catFavDlg').remove()">取消</button>
-      </div>
-    </div>
-    <div style="overflow:auto;padding:10px 18px;font-size:13px">
-      ${CORE_CATS.map(cat => `<label style="display:flex;gap:8px;align-items:center;padding:6px 0;cursor:pointer">
-        <input type="checkbox" data-cat="${cat}" ${!hidden.includes(cat) ? "checked" : ""}>
-        <span>${cat === "线上线下培训" ? "学习任务" : cat}</span></label>`).join("")}
-    </div>
-    <div style="padding:8px 18px 12px;font-size:11px;color:var(--t2)">勾选保存后，概述页只显示所选分类卡（「课程学习情况」卡不受影响）；选择保存在本浏览器。</div>
-  </div>`;
-  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
-  document.body.appendChild(ov);
-}
-function catFavSave() {
-  const dlg = document.getElementById("catFavDlg"); if (!dlg) return;
-  const hidden = CORE_CATS.filter(cat => { const cb = dlg.querySelector(`input[data-cat="${cat}"]`); return cb && !cb.checked; });
-  catHiddenSet(hidden);
-  dlg.remove(); renderOverview();
 }
 
 /* ---------- 概述 · 课程学习情况卡（11/3 Rain：勾选关注的公开课在概述页展示） ---------- */
