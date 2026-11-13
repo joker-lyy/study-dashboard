@@ -580,7 +580,9 @@ function empStat(p, e) {
 function renderOverview() {
   const el = document.getElementById("main");
   const catCards = CORE_CATS.map(cat => {
-    const plans = plansInRange(cat);
+    // 11/13 Rain：关注计划不受时段筛选——勾了就按所选计划统计；未勾才用当前时段计划
+    const favs = planFavGet(cat);
+    const plans = favs.length ? plansOf(cat).filter(p => favs.includes(p.planName)) : plansInRange(cat);
     let emps = 0, done = 0, tT = 0, tD = 0, hasT = false;
     plans.forEach(p => statEmpsOf(p).forEach(e => {
       if (statusOf(e) == null) return;
@@ -591,8 +593,7 @@ function renderOverview() {
     }));
     // 完成率 = 必修课+考核口径（empStat 内已统一，2026-09-18），无明细回退人数口径
     const rate = hasT && tT ? tD / tT * 100 : (emps ? done / emps * 100 : 0);
-    const favs = planFavGet(cat);
-    const list = favs.length ? plans.filter(p => favs.includes(p.planName)) : plans.slice(0, 5);
+    const list = favs.length ? plans : plans.slice(0, 5);
     const latest = list.map(p => {
       // 整体完成率与卡片同口径：任务进度优先（平台字段为0时兜底）
       let t = 0, d2 = 0;
@@ -632,9 +633,20 @@ function planFavSet(cat, names) {
   if (names.length) all[cat] = names; else delete all[cat];
   try { localStorage.setItem("planFavIds", JSON.stringify(all)); } catch (e) {}
 }
-function catPlanManage(cat) {
+let planDlgMode = "all"; // 弹窗内筛选：all=全部计划（默认）/ month=仅本月
+function catPlanManage(cat, mode) {
+  if (mode) planDlgMode = mode;
   const favs = planFavGet(cat);
-  const plans = plansInRange(cat).slice();
+  const allPlans = plansOf(cat).slice().sort((a, b) => String(b.startDate || "").localeCompare(String(a.startDate || "")));
+  let plans = allPlans;
+  if (planDlgMode === "month") {
+    const [f, t] = monthRange(0);
+    plans = allPlans.filter(p => {
+      const s = String(p.startDate || "").slice(0, 10); if (!s) return false;
+      const e = String(p.endDate || "").slice(0, 10) || s;
+      return !(f && e < f) && !(t && s > t);
+    });
+  }
   const old = document.getElementById("planFavDlg"); if (old) old.remove();
   const ov = document.createElement("div");
   ov.id = "planFavDlg";
@@ -643,17 +655,19 @@ function catPlanManage(cat) {
       <input type="checkbox" data-pn="${esc(p.planName)}" ${favs.includes(p.planName) ? "checked" : ""}>
       <span style="flex:1">${esc(p.planName)}</span>
       <span style="color:var(--t2);font-size:12px;white-space:nowrap">${p.startDate || "-"}</span></label>`).join("")
-    || `<div class="empty">暂无计划</div>`;
+    || `<div class="empty">该筛选下暂无计划</div>`;
+  const tab = (k, label) => `<button class="btn" style="padding:4px 12px;font-size:12px;${planDlgMode === k ? "background:var(--acc);color:#fff;border-color:var(--acc)" : ""}" onclick="catPlanManage('${cat}','${k}')">${label}</button>`;
   ov.innerHTML = `<div style="background:var(--card);color:var(--t1);border-radius:14px;max-width:520px;width:92%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(0,0,0,.35)" onclick="event.stopPropagation()">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
       <b>管理关注的计划 · ${esc(cat === "线上线下培训" ? "学习任务" : cat)}</b>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
+        ${tab("all", "全部计划")}${tab("month", "仅本月")}
         <button class="btn" style="padding:5px 12px;font-size:12px" onclick="planFavSave('${cat}')">保存</button>
         <button class="btn" style="padding:5px 12px;font-size:12px" onclick="document.getElementById('planFavDlg').remove()">取消</button>
       </div>
     </div>
     <div style="overflow:auto;padding:8px 18px;font-size:13px">${rows}</div>
-    <div style="padding:8px 18px 12px;font-size:11px;color:var(--t2)">勾选保存后，卡片「最近计划」表只显示所选计划（按开始日期降序）；全部不勾 = 默认显示最近 5 个。选择保存在本浏览器。</div>
+    <div style="padding:8px 18px 12px;font-size:11px;color:var(--t2)">默认列出全部计划（${allPlans.length} 个），点「仅本月」只看本月；勾选保存后卡片统计与表格只按所选计划算；全部不勾 = 回到当前时段口径。</div>
   </div>`;
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
   document.body.appendChild(ov);
